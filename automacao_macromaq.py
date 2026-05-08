@@ -14,7 +14,8 @@ import base64
 # --- CONFIGURAÇÕES ---
 st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 
-BASE_PATH = r"C:\Users\dilceu.gomes\Documents"
+# ALTERADO PARA GITHUB / STREAMLIT CLOUD
+BASE_PATH = "assets"
 
 # Imagens
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
@@ -234,7 +235,6 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
     wb = openpyxl.load_workbook(caminho_template)
     ws = wb.active
 
-    # Tags
     for row in ws.iter_rows():
         for cell in row:
 
@@ -245,7 +245,6 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
                     if tag in cell.value:
                         cell.value = cell.value.replace(tag, str(valor))
 
-    # Linha inicial tabela
     linha_tabela = None
 
     for row in ws.iter_rows():
@@ -261,7 +260,6 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
     if not linha_tabela:
         raise Exception("Tag {{ITEM}} não encontrada.")
 
-    # Preencher EPIs
     for i in range(25):
 
         r = linha_tabela + i
@@ -380,7 +378,6 @@ if not df_colab.empty and not df_cargos.empty:
             ["Técnico Junior", "Técnica Simone"]
         )
 
-    # Templates
     if tecnico_sel == "Técnico Junior":
 
         t_os = TEMPLATE_OS_JUNIOR
@@ -399,7 +396,6 @@ if not df_colab.empty and not df_cargos.empty:
     g_ficha = c2.checkbox("Ficha EPI", True)
     g_cert = c3.checkbox("Certificado", True)
 
-    # PROCESSAR
     if st.button("🚀 PROCESSAR DOCUMENTOS"):
 
         with st.spinner("Gerando documentos..."):
@@ -408,7 +404,6 @@ if not df_colab.empty and not df_cargos.empty:
 
             arquivos = {}
 
-            # Normalização robusta
             df_cargos['f_l'] = (
                 df_cargos['Função']
                 .astype(str)
@@ -427,9 +422,6 @@ if not df_colab.empty and not df_cargos.empty:
                     'Descrição da Atividade'
                 ].values[0]
 
-                # ==========================
-                # ORDEM DE SERVIÇO
-                # ==========================
                 if g_os:
 
                     doc = Document(t_os)
@@ -459,9 +451,6 @@ if not df_colab.empty and not df_cargos.empty:
 
                     arquivos[f"OS {nome_sel}.docx"] = b.getvalue()
 
-                # ==========================
-                # FICHA EPI
-                # ==========================
                 if g_ficha:
 
                     df_e = carregar_aba(cargo)
@@ -498,9 +487,6 @@ if not df_colab.empty and not df_cargos.empty:
                             )
                         )
 
-                # ==========================
-                # CERTIFICADO
-                # ==========================
                 if g_cert:
 
                     prs = Presentation(t_nr)
@@ -526,7 +512,6 @@ if not df_colab.empty and not df_cargos.empty:
 
                     arquivos[f"NR06 {nome_sel}.pptx"] = b.getvalue()
 
-                # ZIP
                 if arquivos:
 
                     z_b = io.BytesIO()
@@ -551,7 +536,6 @@ if not df_colab.empty and not df_cargos.empty:
                     f"Cargo '{cargo}' não encontrado na aba Cargos."
                 )
 
-# RODAPÉ
 st.markdown("""
 <div class="footer">
 © 2026 Gestão Documentos | Versão 1.0 | Desenvolvido por: Dilceu Junior
