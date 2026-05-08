@@ -11,13 +11,16 @@ from datetime import datetime
 from urllib.parse import quote
 import base64
 
-# --- CONFIGURAÇÕES ---
+# --- CONFIGURAÇÕES DE CAMINHO ---
 st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 
-# Na nuvem (GitHub), os arquivos estão na mesma pasta que o script
-BASE_PATH = os.path.dirname(__file__) if "__file__" in locals() else "."
+# Detecta se está no seu PC ou na Nuvem automaticamente
+if os.path.exists(r"C:\Users\dilceu.gomes\Documents"):
+    BASE_PATH = r"C:\Users\dilceu.gomes\Documents"
+else:
+    BASE_PATH = os.path.dirname(__file__) if "__file__" in locals() else "."
 
-# Caminhos dos arquivos conforme seu GitHub
+# Caminhos dos Arquivos
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
@@ -28,7 +31,7 @@ TEMPLATE_NR06_SIMONE = os.path.join(BASE_PATH, "template_nr06_simone.pptx")
 
 SHEET_ID = "1y98U3eK7JXJqQaMC0i7eFbwpvp97Nuyeml5Dis0UCUg"
 
-# --- UNIDADES ---
+# --- DICIONÁRIO DE UNIDADES ---
 UNIDADES = {
     "SÃO JOSÉ": {"CNPJ": "83.675.413/0001-01", "ENDERECO": "BR 101, km 210 / Bairro: Picadas do Sul – São José – SC / CEP: 88106-100"},
     "CHAPECÓ": {"CNPJ": "83.675.413/0002-84", "ENDERECO": "Rua Xanxerê, 360E – Bairro Líder – Chapecó/SC"},
@@ -39,11 +42,37 @@ UNIDADES = {
     "ITAJAÍ": {"CNPJ": "83.675.413/0013-37", "ENDERECO": "Av. Vereador Abrahão João Francisco, 2300 - Dom Bosco - Itajaí / SC"}
 }
 
-# --- FUNÇÕES DE LAYOUT ---
+# --- FUNÇÕES AUXILIARES ---
+def remover_acentos(texto):
+    if not isinstance(texto, str): return str(texto)
+    return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
+
+def data_extenso_pt():
+    meses = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 
+             7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
+    agora = datetime.now()
+    return agora.strftime(f"%d de {meses[agora.month]} de %Y")
+
+@st.cache_data
+def carregar_aba(aba_nome):
+    try:
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={quote(aba_nome)}"
+        return pd.read_csv(url)
+    except: return pd.DataFrame()
+
+def formatar_matricula(valor):
+    if pd.isna(valor) or valor == "": return ""
+    try: return str(int(float(valor)))
+    except: return str(valor)
+
+def formatar_cpf(cpf):
+    cpf = ''.join(filter(str.isdigit, str(cpf))).zfill(11)
+    return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
+
+# --- LAYOUT VISUAL ---
 def get_base64(bin_file):
     if not os.path.exists(bin_file): return ""
-    with open(bin_file, 'rb') as f:
-        data = f.read()
+    with open(bin_file, 'rb') as f: data = f.read()
     return base64.b64encode(data).decode()
 
 def aplicar_layout():
@@ -59,67 +88,13 @@ def aplicar_layout():
         .footer {{ position: fixed; left: 0; bottom: 0; width: 100%; background: rgba(0,0,0,0.8); color: white; text-align: center; padding: 10px; font-size: 13px; z-index: 999; }}
         </style>
         <div class="header-container">
-            <img src="data:image/png;base64,{logo}" width="320">
-            <h1 style="margin-left:25px;color:#2c3e50;">Gestão SSMA Documentos</h1>
+            <img src="data:image/png;base64,{logo}" width="400">
+            <h1 style="margin-left:25px;color:#2c3e50;font-family:sans-serif;">Gestão SSMA Documentos</h1>
         </div>
         """, unsafe_allow_html=True)
-    except: st.title("Gestão SSMA Documentos")
+    except: st.title("Gestão SSMA Macromaq")
 
-# --- FUNÇÕES AUXILIARES ---
-def remover_acentos(texto):
-    if not isinstance(texto, str): return str(texto)
-    return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
-
-@st.cache_data
-def carregar_aba(aba_nome):
-    try:
-        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={quote(aba_nome)}"
-        return pd.read_csv(url)
-    except: return pd.DataFrame()
-
-def data_extenso_pt():
-    meses = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
-    agora = datetime.now()
-    return agora.strftime(f"%d de {meses[agora.month]} de %Y")
-
-def formatar_matricula(valor):
-    if pd.isna(valor) or valor == "": return ""
-    try: return str(int(float(valor)))
-    except: return str(valor)
-
-def formatar_cpf(cpf):
-    cpf = ''.join(filter(str.isdigit, str(cpf))).zfill(11)
-    return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
-
-# --- PROCESSAMENTO EXCEL ---
-def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
-    wb = openpyxl.load_workbook(caminho_template)
-    ws = wb.active
-    for row in ws.iter_rows():
-        for cell in row:
-            if isinstance(cell.value, str):
-                for tag, valor in mapeamento.items():
-                    if tag in cell.value: cell.value = cell.value.replace(tag, str(valor))
-    linha_tabela = None
-    for row in ws.iter_rows():
-        for cell in row:
-            if cell.value and "{{ITEM}}" in str(cell.value):
-                linha_tabela = cell.row; break
-        if linha_tabela: break
-    for i in range(25):
-        r = linha_tabela + i
-        if i < len(df_epis):
-            item = df_epis.iloc[i]
-            ws.cell(row=r, column=1).value = f"{i+1:02d}"
-            ws.cell(row=r, column=2).value = str(item.get('Descrição', ''))
-            ws.cell(row=r, column=5).value = str(item.get('C.A.', ''))
-            ws.cell(row=r, column=6).value = str(item.get('qt.', ''))
-            ws.cell(row=r, column=7).value = str(item.get('unid.', ''))
-            ws.cell(row=r, column=8).value = datetime.now().strftime("%d/%m/%Y")
-        else:
-            for c in [1, 2, 5, 6, 7, 8]: ws.cell(row=r, column=c).value = ""
-    output = io.BytesIO(); wb.save(output); return output.getvalue()
-
+# --- PROCESSAMENTO ---
 def substituir_docx(doc, mapeamento):
     for p in doc.paragraphs:
         for tag, valor in mapeamento.items():
@@ -140,7 +115,36 @@ def substituir_pptx(prs, mapeamento):
                         for tag, valor in mapeamento.items():
                             if tag in run.text: run.text = run.text.replace(tag, str(valor))
 
-# --- APP EXECUÇÃO ---
+def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
+    wb = openpyxl.load_workbook(caminho_template)
+    ws = wb.active
+    for row in ws.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str):
+                for tag, valor in mapeamento.items():
+                    if tag in cell.value: cell.value = cell.value.replace(tag, str(valor))
+    linha_tabela = None
+    for row in ws.iter_rows():
+        for cell in row:
+            if cell.value and "{{ITEM}}" in str(cell.value):
+                linha_tabela = cell.row; break
+        if linha_tabela: break
+    if not linha_tabela: raise Exception("Tag {{ITEM}} não encontrada.")
+    for i in range(25):
+        r = linha_tabela + i
+        if i < len(df_epis):
+            item = df_epis.iloc[i]
+            ws.cell(row=r, column=1).value = f"{i+1:02d}"
+            ws.cell(row=r, column=2).value = str(item.get('Descrição', ''))
+            ws.cell(row=r, column=5).value = str(item.get('C.A.', ''))
+            ws.cell(row=r, column=6).value = str(item.get('qt.', ''))
+            ws.cell(row=r, column=7).value = str(item.get('unid.', ''))
+            ws.cell(row=r, column=8).value = datetime.now().strftime("%d/%m/%Y")
+        else:
+            for c in [1, 2, 5, 6, 7, 8]: ws.cell(row=r, column=c).value = ""
+    output = io.BytesIO(); wb.save(output); return output.getvalue()
+
+# --- EXECUÇÃO DO APP ---
 aplicar_layout()
 df_colab = carregar_aba("Colaboradores")
 df_cargos = carregar_aba("Cargos")
@@ -151,10 +155,10 @@ if not df_colab.empty and not df_cargos.empty:
         nome_sel = st.selectbox("1. Selecione o Colaborador:", df_colab['Nome Colaborador'].dropna().unique())
         dados_colab = df_colab[df_colab['Nome Colaborador'] == nome_sel].iloc[0]
     with col2:
-        unidade_planilha = str(dados_colab.get('Filial', dados_colab.get('Unidade', ''))).upper().strip()
-        lista_unidades = list(UNIDADES.keys())
-        idx = lista_unidades.index(unidade_planilha) if unidade_planilha in lista_unidades else 0
-        unid_sel = st.selectbox("2. Unidade para OS:", lista_unidades, index=idx)
+        unid_p = str(dados_colab.get('Filial', dados_colab.get('Unidade', ''))).upper().strip()
+        lista_u = list(UNIDADES.keys())
+        idx = lista_u.index(unid_p) if unid_p in lista_u else 0
+        unid_sel = st.selectbox("2. Unidade para OS:", lista_u, index=idx)
     with col3:
         tecnico_sel = st.selectbox("3. Técnico Responsável:", ["Técnico Junior", "Técnica Simone"])
 
@@ -167,37 +171,42 @@ if not df_colab.empty and not df_cargos.empty:
 
     if st.button("🚀 PROCESSAR DOCUMENTOS"):
         with st.spinner("Gerando documentos..."):
-            cargo = str(dados_colab['Cargo']).strip()
-            df_cargos['f_l'] = df_cargos['Função'].astype(str).apply(remover_acentos)
-            desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
+            cargo_original = str(dados_colab['Cargo']).strip()
+            arquivos = {}
             
+            # Busca Flexível na aba Cargos
+            df_cargos['f_l'] = df_cargos['Função'].astype(str).apply(remover_acentos)
+            desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo_original)]
+            
+            if desc_f.empty: # Busca parcial se falhar a exata
+                desc_f = df_cargos[df_cargos['f_l'].str.contains(remover_acentos(cargo_original), na=False)]
+
             if not desc_f.empty:
                 desc_atv = desc_f['Descrição da Atividade'].values[0]
-                arquivos = {}
 
                 if g_os:
                     doc = Document(t_os)
-                    substituir_docx(doc, {"{{NOME}}": nome_sel, "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
+                    substituir_docx(doc, {"{{NOME}}": nome_sel, "{{FUNCAO}}": cargo_original.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
                     b = io.BytesIO(); doc.save(b); arquivos[f"OS {nome_sel}.docx"] = b.getvalue()
                 
                 if g_ficha:
-                    df_e = carregar_aba(cargo)
-                    if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
+                    df_e = carregar_aba(cargo_original)
+                    if df_e.empty: df_e = carregar_aba(remover_acentos(cargo_original))
                     if not df_e.empty:
-                        m_f = {"{{NOME}}": nome_sel, "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', ''))}
-                        arquivos[f"Ficha EPI {nome_sel}.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
+                        m_f = {"{{NOME}}": nome_sel, "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo_original, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', ''))}
+                        arquivos[f"Ficha EPI {nome_sel} 2.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
 
                 if g_cert:
                     prs = Presentation(t_nr)
-                    substituir_pptx(prs, {"{{NOME}}": nome_sel, "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
+                    substituir_pptx(prs, {"{{NOME}}": nome_sel, "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo_original, "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
                     b = io.BytesIO(); prs.save(b); arquivos[f"NR06 {nome_sel}.pptx"] = b.getvalue()
 
                 if arquivos:
                     z_b = io.BytesIO()
                     with zipfile.ZipFile(z_b, "w") as z:
                         for n, d in arquivos.items(): z.writestr(n, d)
-                    st.success("✅ Kit Completo pronto!")
+                    st.success("✅ Documentos prontos!")
                     st.download_button("📦 BAIXAR KIT COMPLETO (ZIP)", z_b.getvalue(), f"Kit_{nome_sel}.zip", use_container_width=True)
-            else: st.error(f"Cargo '{cargo}' não encontrado na aba Cargos.")
+            else: st.error(f"Cargo '{cargo_original}' não encontrado na aba Cargos.")
 
 st.markdown("""<div class="footer">© 2026 Gestão Documentos | Versão 1.0 | Desenvolvido por: Dilceu Junior</div>""", unsafe_allow_html=True)
