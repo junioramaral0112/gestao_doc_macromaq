@@ -15,7 +15,6 @@ import base64
 st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 
 # LÓGICA DE CAMINHO DINÂMICO
-# Se detectar o caminho do seu PC, usa ele. Se não (GitHub), usa a pasta atual.
 if os.path.exists(r"C:\Users\dilceu.gomes\Documents"):
     BASE_PATH = r"C:\Users\dilceu.gomes\Documents"
 else:
@@ -208,7 +207,14 @@ if not df_colab.empty and not df_cargos.empty:
 
                 if g_cert:
                     prs = Presentation(t_nr)
-                    substituir_pptx(prs, {"{{NOME}}": nome_sel, "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
+                    # ADICIONADO ABAIXO: {{DATA_TREINAMENTO}} para preencher a data no certificado
+                    substituir_pptx(prs, {
+                        "{{NOME}}": nome_sel, 
+                        "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), 
+                        "{{FUNCAO}}": cargo, 
+                        "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"),
+                        "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."
+                    })
                     b = io.BytesIO(); prs.save(b); arquivos[f"NR06 {nome_sel}.pptx"] = b.getvalue()
 
                 if arquivos:
