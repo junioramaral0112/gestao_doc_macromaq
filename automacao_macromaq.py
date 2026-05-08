@@ -42,10 +42,17 @@ UNIDADES = {
     "ITAJAÍ": {"CNPJ": "83.675.413/0013-37", "ENDERECO": "Av. Vereador Abrahão João Francisco, 2300 - Dom Bosco - Itajaí / SC"}
 }
 
-# --- FUNÇÕES AUXILIARES ---
+# --- FUNÇÕES DE LIMPEZA E BUSCA ---
 def remover_acentos(texto):
     if not isinstance(texto, str): return str(texto)
     return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
+
+def limpar_para_busca(t):
+    """Remove acentos, pontos, traços e excesso de espaços para comparação de cargos"""
+    t = remover_acentos(t)
+    for char in [".", "-", "/", "(", ")", ","]:
+        t = t.replace(char, " ")
+    return " ".join(t.split())
 
 def data_extenso_pt():
     meses = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 
@@ -69,7 +76,7 @@ def formatar_cpf(cpf):
     cpf = ''.join(filter(str.isdigit, str(cpf))).zfill(11)
     return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
 
-# --- LAYOUT VISUAL ---
+# --- LAYOUT ---
 def get_base64(bin_file):
     if not os.path.exists(bin_file): return ""
     with open(bin_file, 'rb') as f: data = f.read()
@@ -135,16 +142,16 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
         if i < len(df_epis):
             item = df_epis.iloc[i]
             ws.cell(row=r, column=1).value = f"{i+1:02d}"
-            ws.cell(row=r, column=2).value = str(item.get('Descrição', ''))
-            ws.cell(row=r, column=5).value = str(item.get('C.A.', ''))
-            ws.cell(row=r, column=6).value = str(item.get('qt.', ''))
-            ws.cell(row=r, column=7).value = str(item.get('unid.', ''))
+            ws.cell(row=r, column=2).value = str(item.get('Descrição', item.get('Descricao', '')))
+            ws.cell(row=r, column=5).value = str(item.get('C.A.', item.get('CA', '')))
+            ws.cell(row=r, column=6).value = str(item.get('qt.', item.get('Quantidade', '')))
+            ws.cell(row=r, column=7).value = str(item.get('unid.', item.get('Unidade', '')))
             ws.cell(row=r, column=8).value = datetime.now().strftime("%d/%m/%Y")
         else:
             for c in [1, 2, 5, 6, 7, 8]: ws.cell(row=r, column=c).value = ""
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
-# --- EXECUÇÃO DO APP ---
+# --- EXECUÇÃO ---
 aplicar_layout()
 df_colab = carregar_aba("Colaboradores")
 df_cargos = carregar_aba("Cargos")
@@ -172,17 +179,18 @@ if not df_colab.empty and not df_cargos.empty:
     if st.button("🚀 PROCESSAR DOCUMENTOS"):
         with st.spinner("Gerando documentos..."):
             cargo_original = str(dados_colab['Cargo']).strip()
-            arquivos = {}
             
-            # Busca Flexível na aba Cargos
-            df_cargos['f_l'] = df_cargos['Função'].astype(str).apply(remover_acentos)
-            desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo_original)]
-            
-            if desc_f.empty: # Busca parcial se falhar a exata
-                desc_f = df_cargos[df_cargos['f_l'].str.contains(remover_acentos(cargo_original), na=False)]
+            # --- BUSCA ULTRA FLEXÍVEL NA ABA CARGOS ---
+            df_cargos['f_busca'] = df_cargos['Função'].astype(str).apply(limpar_para_busca)
+            cargo_busca = limpar_para_busca(cargo_original)
+            desc_f = df_cargos[df_cargos['f_busca'] == cargo_busca]
+
+            if desc_f.empty: # Busca parcial caso falte uma letra ou ponto
+                desc_f = df_cargos[df_cargos['f_busca'].str.contains(cargo_busca, na=False)]
 
             if not desc_f.empty:
                 desc_atv = desc_f['Descrição da Atividade'].values[0]
+                arquivos = {}
 
                 if g_os:
                     doc = Document(t_os)
@@ -207,6 +215,7 @@ if not df_colab.empty and not df_cargos.empty:
                         for n, d in arquivos.items(): z.writestr(n, d)
                     st.success("✅ Documentos prontos!")
                     st.download_button("📦 BAIXAR KIT COMPLETO (ZIP)", z_b.getvalue(), f"Kit_{nome_sel}.zip", use_container_width=True)
-            else: st.error(f"Cargo '{cargo_original}' não encontrado na aba Cargos.")
+            else:
+                st.error(f"❌ Cargo '{cargo_original}' não encontrado na aba Cargos. Verifique abreviações (ex: Seg vs Seg.).")
 
 st.markdown("""<div class="footer">© 2026 Gestão Documentos | Versão 1.0 | Desenvolvido por: Dilceu Junior</div>""", unsafe_allow_html=True)
