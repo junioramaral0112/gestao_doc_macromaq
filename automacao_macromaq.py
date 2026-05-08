@@ -14,13 +14,11 @@ import base64
 # --- CONFIGURAÇÕES DE CAMINHO ---
 st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 
-# Detecta se está no seu PC ou na Nuvem automaticamente
 if os.path.exists(r"C:\Users\dilceu.gomes\Documents"):
     BASE_PATH = r"C:\Users\dilceu.gomes\Documents"
 else:
     BASE_PATH = os.path.dirname(__file__) if "__file__" in locals() else "."
 
-# Caminhos dos Arquivos
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
@@ -31,7 +29,6 @@ TEMPLATE_NR06_SIMONE = os.path.join(BASE_PATH, "template_nr06_simone.pptx")
 
 SHEET_ID = "1y98U3eK7JXJqQaMC0i7eFbwpvp97Nuyeml5Dis0UCUg"
 
-# --- DICIONÁRIO DE UNIDADES ---
 UNIDADES = {
     "SÃO JOSÉ": {"CNPJ": "83.675.413/0001-01", "ENDERECO": "BR 101, km 210 / Bairro: Picadas do Sul – São José – SC / CEP: 88106-100"},
     "CHAPECÓ": {"CNPJ": "83.675.413/0002-84", "ENDERECO": "Rua Xanxerê, 360E – Bairro Líder – Chapecó/SC"},
@@ -42,13 +39,13 @@ UNIDADES = {
     "ITAJAÍ": {"CNPJ": "83.675.413/0013-37", "ENDERECO": "Av. Vereador Abrahão João Francisco, 2300 - Dom Bosco - Itajaí / SC"}
 }
 
-# --- FUNÇÕES DE LIMPEZA E BUSCA ---
+# --- FUNÇÕES DE LIMPEZA ---
 def remover_acentos(texto):
     if not isinstance(texto, str): return str(texto)
     return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
 
-def limpar_para_busca(t):
-    """Remove acentos, pontos, traços e excesso de espaços para comparação de cargos"""
+def limpar_total(t):
+    """Remove acentos, pontos, traços e normaliza espaços para busca flexível"""
     t = remover_acentos(t)
     for char in [".", "-", "/", "(", ")", ","]:
         t = t.replace(char, " ")
@@ -136,22 +133,21 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
             if cell.value and "{{ITEM}}" in str(cell.value):
                 linha_tabela = cell.row; break
         if linha_tabela: break
-    if not linha_tabela: raise Exception("Tag {{ITEM}} não encontrada.")
     for i in range(25):
         r = linha_tabela + i
         if i < len(df_epis):
             item = df_epis.iloc[i]
             ws.cell(row=r, column=1).value = f"{i+1:02d}"
-            ws.cell(row=r, column=2).value = str(item.get('Descrição', item.get('Descricao', '')))
-            ws.cell(row=r, column=5).value = str(item.get('C.A.', item.get('CA', '')))
-            ws.cell(row=r, column=6).value = str(item.get('qt.', item.get('Quantidade', '')))
-            ws.cell(row=r, column=7).value = str(item.get('unid.', item.get('Unidade', '')))
+            ws.cell(row=r, column=2).value = str(item.get('Descrição', ''))
+            ws.cell(row=r, column=5).value = str(item.get('C.A.', ''))
+            ws.cell(row=r, column=6).value = str(item.get('qt.', ''))
+            ws.cell(row=r, column=7).value = str(item.get('unid.', ''))
             ws.cell(row=r, column=8).value = datetime.now().strftime("%d/%m/%Y")
         else:
             for c in [1, 2, 5, 6, 7, 8]: ws.cell(row=r, column=c).value = ""
     output = io.BytesIO(); wb.save(output); return output.getvalue()
 
-# --- EXECUÇÃO ---
+# --- APP ---
 aplicar_layout()
 df_colab = carregar_aba("Colaboradores")
 df_cargos = carregar_aba("Cargos")
@@ -159,15 +155,15 @@ df_cargos = carregar_aba("Cargos")
 if not df_colab.empty and not df_cargos.empty:
     col1, col2, col3 = st.columns(3)
     with col1:
-        nome_sel = st.selectbox("1. Selecione o Colaborador:", df_colab['Nome Colaborador'].dropna().unique())
+        nome_sel = st.selectbox("1. Colaborador:", df_colab['Nome Colaborador'].dropna().unique())
         dados_colab = df_colab[df_colab['Nome Colaborador'] == nome_sel].iloc[0]
     with col2:
         unid_p = str(dados_colab.get('Filial', dados_colab.get('Unidade', ''))).upper().strip()
         lista_u = list(UNIDADES.keys())
         idx = lista_u.index(unid_p) if unid_p in lista_u else 0
-        unid_sel = st.selectbox("2. Unidade para OS:", lista_u, index=idx)
+        unid_sel = st.selectbox("2. Unidade:", lista_u, index=idx)
     with col3:
-        tecnico_sel = st.selectbox("3. Técnico Responsável:", ["Técnico Junior", "Técnica Simone"])
+        tecnico_sel = st.selectbox("3. Técnico:", ["Técnico Junior", "Técnica Simone"])
 
     t_os = TEMPLATE_OS_JUNIOR if tecnico_sel == "Técnico Junior" else TEMPLATE_OS_SIMONE
     t_nr = TEMPLATE_NR06_JUNIOR if tecnico_sel == "Técnico Junior" else TEMPLATE_NR06_SIMONE
@@ -180,12 +176,14 @@ if not df_colab.empty and not df_cargos.empty:
         with st.spinner("Gerando documentos..."):
             cargo_original = str(dados_colab['Cargo']).strip()
             
-            # --- BUSCA ULTRA FLEXÍVEL NA ABA CARGOS ---
-            df_cargos['f_busca'] = df_cargos['Função'].astype(str).apply(limpar_para_busca)
-            cargo_busca = limpar_para_busca(cargo_original)
+            # --- BUSCA ULTRA FLEXÍVEL (Ignora ponto, acento e abreviação) ---
+            df_cargos['f_busca'] = df_cargos['Função'].astype(str).apply(limpar_total)
+            cargo_busca = limpar_total(cargo_original)
+            
+            # Tenta encontrar a linha da descrição
             desc_f = df_cargos[df_cargos['f_busca'] == cargo_busca]
 
-            if desc_f.empty: # Busca parcial caso falte uma letra ou ponto
+            if desc_f.empty: # Se falhar a exata, tenta conter a string
                 desc_f = df_cargos[df_cargos['f_busca'].str.contains(cargo_busca, na=False)]
 
             if not desc_f.empty:
@@ -216,6 +214,6 @@ if not df_colab.empty and not df_cargos.empty:
                     st.success("✅ Documentos prontos!")
                     st.download_button("📦 BAIXAR KIT COMPLETO (ZIP)", z_b.getvalue(), f"Kit_{nome_sel}.zip", use_container_width=True)
             else:
-                st.error(f"❌ Cargo '{cargo_original}' não encontrado na aba Cargos. Verifique abreviações (ex: Seg vs Seg.).")
+                st.error(f"❌ Cargo '{cargo_original}' não encontrado na aba Cargos. Verifique se a descrição existe na aba Cargos.")
 
 st.markdown("""<div class="footer">© 2026 Gestão Documentos | Versão 1.0 | Desenvolvido por: Dilceu Junior</div>""", unsafe_allow_html=True)
