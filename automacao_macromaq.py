@@ -14,12 +14,15 @@ import base64
 # --- CONFIGURAÇÕES ---
 st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 
-# Na nuvem (GitHub), os arquivos estão na mesma pasta que o script
+# LÓGICA DE CAMINHO: Detecta se está local ou na nuvem
+# No GitHub, BASE_PATH será a pasta onde o script está
 BASE_PATH = os.path.dirname(__file__) if "__file__" in locals() else "."
 
-# Caminhos dos arquivos conforme seu GitHub
+# Imagens (Devem estar na mesma pasta ou subpasta no GitHub)
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
+
+# Templates (Devem ser subidos para o repositório)
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
 TEMPLATE_OS_JUNIOR = os.path.join(BASE_PATH, "template_os_Junior.docx")
 TEMPLATE_NR06_JUNIOR = os.path.join(BASE_PATH, "template_nr06_Junior.pptx")
@@ -39,9 +42,10 @@ UNIDADES = {
     "ITAJAÍ": {"CNPJ": "83.675.413/0013-37", "ENDERECO": "Av. Vereador Abrahão João Francisco, 2300 - Dom Bosco - Itajaí / SC"}
 }
 
-# --- FUNÇÕES DE LAYOUT ---
+# --- LAYOUT ---
 def get_base64(bin_file):
-    if not os.path.exists(bin_file): return ""
+    if not os.path.exists(bin_file):
+        return ""
     with open(bin_file, 'rb') as f:
         data = f.read()
     return base64.b64encode(data).decode()
@@ -52,18 +56,57 @@ def aplicar_layout():
         logo = get_base64(LOGO_PATH)
         st.markdown(f"""
         <style>
-        .stApp {{ background-image: url("data:image/png;base64,{fundo}"); background-size: cover; background-position: center; background-attachment: fixed; }}
-        .stSelectbox label, div[data-testid="stCheckbox"] label p {{ color: white !important; background: rgba(0,0,0,0.7); padding: 5px 12px; border-radius: 8px; font-weight: bold; }}
-        .stButton > button {{ background: #2c3e50; color: #f9cc0b; border: 2px solid #f9cc0b; border-radius: 10px; height: 55px; font-weight: bold; width: 100%; font-size: 18px; }}
-        .header-container {{ display: flex; align-items: center; background: rgba(255,255,255,0.9); padding: 20px; border-radius: 15px; margin-bottom: 30px; }}
-        .footer {{ position: fixed; left: 0; bottom: 0; width: 100%; background: rgba(0,0,0,0.8); color: white; text-align: center; padding: 10px; font-size: 13px; z-index: 999; }}
+        .stApp {{
+            background-image: url("data:image/png;base64,{fundo}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }}
+        .stSelectbox label, div[data-testid="stCheckbox"] label p {{
+            color: white !important;
+            background: rgba(0,0,0,0.7);
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-weight: bold;
+        }}
+        .stButton > button {{
+            background: #2c3e50;
+            color: #f9cc0b;
+            border: 2px solid #f9cc0b;
+            border-radius: 10px;
+            height: 55px;
+            font-weight: bold;
+            width: 100%;
+            font-size: 18px;
+        }}
+        .header-container {{
+            display: flex;
+            align-items: center;
+            background: rgba(255,255,255,0.9);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }}
+        .footer {{
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            text-align: center;
+            padding: 10px;
+            font-size: 13px;
+            z-index: 999;
+        }}
         </style>
         <div class="header-container">
             <img src="data:image/png;base64,{logo}" width="320">
             <h1 style="margin-left:25px;color:#2c3e50;">Gestão SSMA Documentos</h1>
         </div>
         """, unsafe_allow_html=True)
-    except: st.title("Gestão SSMA Documentos")
+    except:
+        st.title("Automação SSMA")
 
 # --- FUNÇÕES AUXILIARES ---
 def remover_acentos(texto):
@@ -91,7 +134,12 @@ def formatar_cpf(cpf):
     cpf = ''.join(filter(str.isdigit, str(cpf))).zfill(11)
     return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
 
-# --- PROCESSAMENTO EXCEL ---
+def limpar_valor(valor):
+    if pd.isna(valor): return ""
+    texto = str(valor).strip()
+    return "" if texto.lower() in ["nan", "na"] else texto
+
+# --- EXCEL ---
 def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
     wb = openpyxl.load_workbook(caminho_template)
     ws = wb.active
@@ -104,22 +152,27 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
     for row in ws.iter_rows():
         for cell in row:
             if cell.value and "{{ITEM}}" in str(cell.value):
-                linha_tabela = cell.row; break
+                linha_tabela = cell.row
+                break
         if linha_tabela: break
+    if not linha_tabela: raise Exception("Tag {{ITEM}} não encontrada.")
     for i in range(25):
         r = linha_tabela + i
         if i < len(df_epis):
             item = df_epis.iloc[i]
             ws.cell(row=r, column=1).value = f"{i+1:02d}"
-            ws.cell(row=r, column=2).value = str(item.get('Descrição', ''))
-            ws.cell(row=r, column=5).value = str(item.get('C.A.', ''))
-            ws.cell(row=r, column=6).value = str(item.get('qt.', ''))
-            ws.cell(row=r, column=7).value = str(item.get('unid.', ''))
+            ws.cell(row=r, column=2).value = limpar_valor(item.get('Descrição', ''))
+            ws.cell(row=r, column=5).value = limpar_valor(item.get('C.A.', ''))
+            ws.cell(row=r, column=6).value = limpar_valor(item.get('qt.', ''))
+            ws.cell(row=r, column=7).value = limpar_valor(item.get('unid.', ''))
             ws.cell(row=r, column=8).value = datetime.now().strftime("%d/%m/%Y")
         else:
             for c in [1, 2, 5, 6, 7, 8]: ws.cell(row=r, column=c).value = ""
-    output = io.BytesIO(); wb.save(output); return output.getvalue()
+    output = io.BytesIO()
+    wb.save(output)
+    return output.getvalue()
 
+# --- DOCX/PPTX ---
 def substituir_docx(doc, mapeamento):
     for p in doc.paragraphs:
         for tag, valor in mapeamento.items():
@@ -140,7 +193,7 @@ def substituir_pptx(prs, mapeamento):
                         for tag, valor in mapeamento.items():
                             if tag in run.text: run.text = run.text.replace(tag, str(valor))
 
-# --- APP EXECUÇÃO ---
+# --- APP ---
 aplicar_layout()
 df_colab = carregar_aba("Colaboradores")
 df_cargos = carregar_aba("Cargos")
@@ -169,8 +222,9 @@ if not df_colab.empty and not df_cargos.empty:
         with st.spinner("Gerando documentos..."):
             cargo = str(dados_colab['Cargo']).strip()
             df_cargos['f_l'] = df_cargos['Função'].astype(str).apply(remover_acentos)
-            desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
-            
+            cargo_normalizado = remover_acentos(cargo)
+            desc_f = df_cargos[df_cargos['f_l'] == cargo_normalizado]
+
             if not desc_f.empty:
                 desc_atv = desc_f['Descrição da Atividade'].values[0]
                 arquivos = {}
@@ -179,7 +233,7 @@ if not df_colab.empty and not df_cargos.empty:
                     doc = Document(t_os)
                     substituir_docx(doc, {"{{NOME}}": nome_sel, "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
                     b = io.BytesIO(); doc.save(b); arquivos[f"OS {nome_sel}.docx"] = b.getvalue()
-                
+
                 if g_ficha:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
@@ -189,15 +243,16 @@ if not df_colab.empty and not df_cargos.empty:
 
                 if g_cert:
                     prs = Presentation(t_nr)
-                    substituir_pptx(prs, {"{{NOME}}": nome_sel, "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
+                    substituir_pptx(prs, {"{{NOME}}": nome_sel, "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
                     b = io.BytesIO(); prs.save(b); arquivos[f"NR06 {nome_sel}.pptx"] = b.getvalue()
 
                 if arquivos:
                     z_b = io.BytesIO()
                     with zipfile.ZipFile(z_b, "w") as z:
                         for n, d in arquivos.items(): z.writestr(n, d)
-                    st.success("✅ Kit Completo pronto!")
+                    st.success("✅ Documentos prontos!")
                     st.download_button("📦 BAIXAR KIT COMPLETO (ZIP)", z_b.getvalue(), f"Kit_{nome_sel}.zip", use_container_width=True)
-            else: st.error(f"Cargo '{cargo}' não encontrado na aba Cargos.")
+            else:
+                st.error(f"Cargo '{cargo}' não encontrado na aba Cargos.")
 
 st.markdown("""<div class="footer">© 2026 Gestão Documentos | Versão 1.0 | Desenvolvido por: Dilceu Junior</div>""", unsafe_allow_html=True)
