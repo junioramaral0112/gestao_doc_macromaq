@@ -14,21 +14,25 @@ import base64
 # --- CONFIGURAÇÕES ---
 st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 
-# ALTERADO PARA GITHUB / STREAMLIT CLOUD
-BASE_PATH = "assets"
+# =========================
+# CAMINHOS STREAMLIT CLOUD
+# =========================
+BASE_PATH = os.path.dirname(os.path.abspath(__file__))
+
+ASSETS_PATH = os.path.join(BASE_PATH, "assets")
 
 # Imagens
-FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
-LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
+FUNDO_PATH = os.path.join(ASSETS_PATH, "fundo.png")
+LOGO_PATH = os.path.join(ASSETS_PATH, "logo.png")
 
 # Templates
-TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
+TEMPLATE_FICHA = os.path.join(ASSETS_PATH, "template_ficha.xlsx")
 
-TEMPLATE_OS_JUNIOR = os.path.join(BASE_PATH, "template_os_Junior.docx")
-TEMPLATE_NR06_JUNIOR = os.path.join(BASE_PATH, "template_nr06_Junior.pptx")
+TEMPLATE_OS_JUNIOR = os.path.join(ASSETS_PATH, "template_os_Junior.docx")
+TEMPLATE_NR06_JUNIOR = os.path.join(ASSETS_PATH, "template_nr06_Junior.pptx")
 
-TEMPLATE_OS_SIMONE = os.path.join(BASE_PATH, "template_os_simone.docx")
-TEMPLATE_NR06_SIMONE = os.path.join(BASE_PATH, "template_nr06_simone.pptx")
+TEMPLATE_OS_SIMONE = os.path.join(ASSETS_PATH, "template_os_simone.docx")
+TEMPLATE_NR06_SIMONE = os.path.join(ASSETS_PATH, "template_nr06_simone.pptx")
 
 SHEET_ID = "1y98U3eK7JXJqQaMC0i7eFbwpvp97Nuyeml5Dis0UCUg"
 
@@ -66,6 +70,7 @@ UNIDADES = {
 
 # --- LAYOUT ---
 def get_base64(bin_file):
+
     if not os.path.exists(bin_file):
         return ""
 
@@ -76,7 +81,9 @@ def get_base64(bin_file):
 
 
 def aplicar_layout():
+
     try:
+
         fundo = get_base64(FUNDO_PATH)
         logo = get_base64(LOGO_PATH)
 
@@ -155,6 +162,7 @@ def aplicar_layout():
 
 # --- FUNÇÕES AUXILIARES ---
 def remover_acentos(texto):
+
     if not isinstance(texto, str):
         return str(texto)
 
@@ -166,7 +174,9 @@ def remover_acentos(texto):
 
 @st.cache_data
 def carregar_aba(aba_nome):
+
     try:
+
         aba_encoded = quote(aba_nome)
 
         url = (
@@ -181,6 +191,7 @@ def carregar_aba(aba_nome):
 
 
 def data_extenso_pt():
+
     meses = {
         1: "Janeiro",
         2: "Fevereiro",
@@ -202,6 +213,7 @@ def data_extenso_pt():
 
 
 def formatar_matricula(valor):
+
     if pd.isna(valor) or valor == "":
         return ""
 
@@ -212,12 +224,14 @@ def formatar_matricula(valor):
 
 
 def formatar_cpf(cpf):
+
     cpf = ''.join(filter(str.isdigit, str(cpf))).zfill(11)
 
     return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
 
 
 def limpar_valor(valor):
+
     if pd.isna(valor):
         return ""
 
@@ -236,6 +250,7 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
     ws = wb.active
 
     for row in ws.iter_rows():
+
         for cell in row:
 
             if isinstance(cell.value, str):
@@ -248,6 +263,7 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
     linha_tabela = None
 
     for row in ws.iter_rows():
+
         for cell in row:
 
             if cell.value and "{{ITEM}}" in str(cell.value):
@@ -276,6 +292,7 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
             ws.cell(row=r, column=8).value = datetime.now().strftime("%d/%m/%Y")
 
         else:
+
             for c in [1, 2, 5, 6, 7, 8]:
                 ws.cell(row=r, column=c).value = ""
 
@@ -422,6 +439,7 @@ if not df_colab.empty and not df_cargos.empty:
                     'Descrição da Atividade'
                 ].values[0]
 
+                # OS
                 if g_os:
 
                     doc = Document(t_os)
@@ -451,6 +469,7 @@ if not df_colab.empty and not df_cargos.empty:
 
                     arquivos[f"OS {nome_sel}.docx"] = b.getvalue()
 
+                # FICHA
                 if g_ficha:
 
                     df_e = carregar_aba(cargo)
@@ -487,6 +506,7 @@ if not df_colab.empty and not df_cargos.empty:
                             )
                         )
 
+                # CERTIFICADO
                 if g_cert:
 
                     prs = Presentation(t_nr)
@@ -536,6 +556,7 @@ if not df_colab.empty and not df_cargos.empty:
                     f"Cargo '{cargo}' não encontrado na aba Cargos."
                 )
 
+# RODAPÉ
 st.markdown("""
 <div class="footer">
 © 2026 Gestão Documentos | Versão 1.0 | Desenvolvido por: Dilceu Junior
