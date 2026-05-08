@@ -52,7 +52,7 @@ def aplicar_layout():
         logo = get_base64(LOGO_PATH)
         st.markdown(f"""
         <style>
-        .stApp {{ background-image: url("data:image/png;base64,{fundo}"); background-size: cover; background-attachment: fixed; }}
+        .stApp {{ background-image: url("data:image/png;base64,{fundo}"); background-size: cover; background-position: center; background-attachment: fixed; }}
         .stSelectbox label, div[data-testid="stCheckbox"] label p {{ color: white !important; background: rgba(0,0,0,0.7); padding: 5px 12px; border-radius: 8px; font-weight: bold; }}
         .stButton > button {{ background: #2c3e50; color: #f9cc0b; border: 2px solid #f9cc0b; border-radius: 10px; height: 55px; font-weight: bold; width: 100%; font-size: 18px; }}
         .header-container {{ display: flex; align-items: center; background: rgba(255,255,255,0.9); padding: 20px; border-radius: 15px; margin-bottom: 30px; }}
@@ -82,20 +82,54 @@ def data_extenso_pt():
     agora = datetime.now()
     return agora.strftime(f"%d de {meses[agora.month]} de %Y")
 
-# --- PROCESSAMENTO DOCX (CORREÇÃO DA FUNÇÃO) ---
+def formatar_matricula(valor):
+    if pd.isna(valor) or valor == "": return ""
+    try: return str(int(float(valor)))
+    except: return str(valor)
+
+def formatar_cpf(cpf):
+    cpf = ''.join(filter(str.isdigit, str(cpf))).zfill(11)
+    return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
+
+# --- PROCESSAMENTO EXCEL ---
+def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
+    wb = openpyxl.load_workbook(caminho_template)
+    ws = wb.active
+    for row in ws.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str):
+                for tag, valor in mapeamento.items():
+                    if tag in cell.value: cell.value = cell.value.replace(tag, str(valor))
+    linha_tabela = None
+    for row in ws.iter_rows():
+        for cell in row:
+            if cell.value and "{{ITEM}}" in str(cell.value):
+                linha_tabela = cell.row; break
+        if linha_tabela: break
+    for i in range(25):
+        r = linha_tabela + i
+        if i < len(df_epis):
+            item = df_epis.iloc[i]
+            ws.cell(row=r, column=1).value = f"{i+1:02d}"
+            ws.cell(row=r, column=2).value = str(item.get('Descrição', ''))
+            ws.cell(row=r, column=5).value = str(item.get('C.A.', ''))
+            ws.cell(row=r, column=6).value = str(item.get('qt.', ''))
+            ws.cell(row=r, column=7).value = str(item.get('unid.', ''))
+            ws.cell(row=r, column=8).value = datetime.now().strftime("%d/%m/%Y")
+        else:
+            for c in [1, 2, 5, 6, 7, 8]: ws.cell(row=r, column=c).value = ""
+    output = io.BytesIO(); wb.save(output); return output.getvalue()
+
 def substituir_docx(doc, mapeamento):
     for p in doc.paragraphs:
         for tag, valor in mapeamento.items():
-            if tag in p.text:
-                # Substituição forçada no parágrafo inteiro para evitar quebras de XML
-                p.text = p.text.replace(tag, str(valor))
+            if tag in p.text: p.text = p.text.replace(tag, str(valor))
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for p in cell.paragraphs:
                     for tag, valor in mapeamento.items():
-                        if tag in p.text:
-                            p.text = p.text.replace(tag, str(valor))
+                        if tag in p.text: p.text = p.text.replace(tag, str(valor))
 
 def substituir_pptx(prs, mapeamento):
     for slide in prs.slides:
@@ -143,28 +177,26 @@ if not df_colab.empty and not df_cargos.empty:
 
                 if g_os:
                     doc = Document(t_os)
-                    substituir_docx(doc, {
-                        "{{NOME}}": nome_sel, 
-                        "{{FUNCAO}}": cargo.upper(), 
-                        "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], 
-                        "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], 
-                        "{{SETOR}}": str(dados_colab.get('NomeLocal', '')),
-                        "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), 
-                        "{{DATA}}": datetime.now().strftime("%d/%m/%Y")
-                    })
+                    substituir_docx(doc, {"{{NOME}}": nome_sel, "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
                     b = io.BytesIO(); doc.save(b); arquivos[f"OS {nome_sel}.docx"] = b.getvalue()
                 
-                # ... (Lógica da Ficha e Certificado permanecem iguais ao seu código funcional)
+                if g_ficha:
+                    df_e = carregar_aba(cargo)
+                    if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
+                    if not df_e.empty:
+                        m_f = {"{{NOME}}": nome_sel, "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', ''))}
+                        arquivos[f"Ficha EPI {nome_sel}.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
+
                 if g_cert:
                     prs = Presentation(t_nr)
-                    substituir_pptx(prs, {"{{NOME}}": nome_sel, "{{CPF}}": str(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
+                    substituir_pptx(prs, {"{{NOME}}": nome_sel, "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
                     b = io.BytesIO(); prs.save(b); arquivos[f"NR06 {nome_sel}.pptx"] = b.getvalue()
 
                 if arquivos:
                     z_b = io.BytesIO()
                     with zipfile.ZipFile(z_b, "w") as z:
                         for n, d in arquivos.items(): z.writestr(n, d)
-                    st.success("✅ Documentos prontos!")
+                    st.success("✅ Kit Completo pronto!")
                     st.download_button("📦 BAIXAR KIT COMPLETO (ZIP)", z_b.getvalue(), f"Kit_{nome_sel}.zip", use_container_width=True)
             else: st.error(f"Cargo '{cargo}' não encontrado na aba Cargos.")
 
