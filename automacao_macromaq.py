@@ -1,4 +1,4 @@
-import streamlit as st
+   import streamlit as st
 import pandas as pd
 from docx import Document
 from pptx import Presentation
@@ -14,32 +14,13 @@ import base64
 # --- CONFIGURAÇÕES ---
 st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 
-# --- NAVEGAÇÃO LATERAL (CORREÇÃO DO MENU) ---
-st.sidebar.markdown("### 🗂️ Menu de Navegação")
-# O rádio permite que você alterne entre as ferramentas
-pagina_selecionada = st.sidebar.radio(
-    "Selecione o Módulo:", 
-    ["Emissão de Documentos", "Controle de ASO"],
-    key="nav_main"
-)
-
-# Lógica de chaveamento de página (Ajustada para evitar StreamlitAPIException)
-if pagina_selecionada == "Controle de ASO":
-    try:
-        # No Streamlit Cloud, o caminho deve ser relativo ao nome registrado na pasta pages
-        st.switch_page("pages/Controle_de_ASO.py")
-    except Exception:
-        st.error("Erro ao carregar a página de ASO. Verifique se o arquivo está na pasta /pages.")
-
-# --- INÍCIO DO CÓDIGO ORIGINAL MACROMAQ ---
-
-# LÓGICA DE CAMINHO DINÂMICO (MANTIDA)
+# LÓGICA DE CAMINHO DINÂMICO
 if os.path.exists(r"C:\Users\dilceu.gomes\Documents"):
     BASE_PATH = r"C:\Users\dilceu.gomes\Documents"
 else:
     BASE_PATH = os.path.dirname(__file__) if "__file__" in locals() else "."
 
-# Caminhos dos arquivos (MANTIDOS)
+# Caminhos dos arquivos
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
@@ -50,7 +31,7 @@ TEMPLATE_NR06_SIMONE = os.path.join(BASE_PATH, "template_nr06_simone.pptx")
 
 SHEET_ID = "1y98U3eK7JXJqQaMC0i7eFbwpvp97Nuyeml5Dis0UCUg"
 
-# --- UNIDADES (MANTIDAS) ---
+# --- UNIDADES ---
 UNIDADES = {
     "SÃO JOSÉ": {"CNPJ": "83.675.413/0001-01", "ENDERECO": "BR 101, km 210 / Bairro: Picadas do Sul – São José – SC / CEP: 88106-100"},
     "CHAPECÓ": {"CNPJ": "83.675.413/0002-84", "ENDERECO": "Rua Xanxerê, 360E – Bairro Líder – Chapecó/SC"},
@@ -61,7 +42,7 @@ UNIDADES = {
     "ITAJAÍ": {"CNPJ": "83.675.413/0013-37", "ENDERECO": "Av. Vereador Abrahão João Francisco, 2300 - Dom Bosco - Itajaí / SC"}
 }
 
-# --- FUNÇÕES DE LAYOUT (MANTIDAS) ---
+# --- FUNÇÕES DE LAYOUT ---
 def get_base64(bin_file):
     if not os.path.exists(bin_file): return ""
     with open(bin_file, 'rb') as f: data = f.read()
@@ -74,10 +55,18 @@ def aplicar_layout():
         st.markdown(f"""
         <style>
         .stApp {{ background-image: url("data:image/png;base64,{fundo}"); background-size: cover; background-position: center; background-attachment: fixed; }}
-        .stSelectbox label, div[data-testid="stCheckbox"] label p {{ color: white !important; background: rgba(0,0,0,0.7); padding: 5px 12px; border-radius: 8px; font-weight: bold; }}
-        .stButton > button {{ background: #2c3e50; color: #f9cc0b; border: 2px solid #f9cc0b; border-radius: 10px; height: 55px; font-weight: bold; width: 100%; font-size: 18px; }}
-        .header-container {{ display: flex; align-items: center; background: rgba(255,255,255,0.9); padding: 20px; border-radius: 15px; margin-bottom: 30px; }}
-        .footer {{ position: fixed; left: 0; bottom: 0; width: 100%; background: rgba(0,0,0,0.8); color: white; text-align: center; padding: 10px; font-size: 13px; z-index: 999; }}
+        .stSelectbox label, div[data-testid="stCheckbox"] label p {{
+            color: white !important; background: rgba(0,0,0,0.7); padding: 5px 12px; border-radius: 8px; font-weight: bold;
+        }}
+        .stButton > button {{
+            background: #2c3e50; color: #f9cc0b; border: 2px solid #f9cc0b; border-radius: 10px; height: 55px; font-weight: bold; width: 100%; font-size: 18px;
+        }}
+        .header-container {{
+            display: flex; align-items: center; background: rgba(255,255,255,0.9); padding: 20px; border-radius: 15px; margin-bottom: 30px;
+        }}
+        .footer {{
+            position: fixed; left: 0; bottom: 0; width: 100%; background: rgba(0,0,0,0.8); color: white; text-align: center; padding: 10px; font-size: 13px; z-index: 999;
+        }}
         </style>
         <div class="header-container">
             <img src="data:image/png;base64,{logo}" width="320">
@@ -86,7 +75,7 @@ def aplicar_layout():
         """, unsafe_allow_html=True)
     except: st.title("Gestão SSMA Macromaq")
 
-# --- FUNÇÕES AUXILIARES (MANTIDAS) ---
+# --- FUNÇÕES AUXILIARES ---
 def remover_acentos(texto):
     if not isinstance(texto, str): return str(texto)
     return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
@@ -94,7 +83,8 @@ def remover_acentos(texto):
 @st.cache_data
 def carregar_aba(aba_nome):
     try:
-        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={quote(aba_nome)}"
+        aba_encoded = quote(aba_nome)
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={aba_encoded}"
         return pd.read_csv(url)
     except: return pd.DataFrame()
 
@@ -117,16 +107,22 @@ def limpar_valor(valor):
     texto = str(valor).strip()
     return "" if texto.lower() in ["nan", "na"] else texto
 
-# --- PROCESSAMENTO (MANTIDO) ---
+# --- PROCESSAMENTO ---
 def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
     wb = openpyxl.load_workbook(caminho_template)
     ws = wb.active
+    for row in ws.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str):
+                for tag, valor in mapeamento.items():
+                    if tag in cell.value: cell.value = cell.value.replace(tag, str(valor))
     linha_tabela = None
     for row in ws.iter_rows():
         for cell in row:
             if cell.value and "{{ITEM}}" in str(cell.value):
                 linha_tabela = cell.row; break
         if linha_tabela: break
+    if not linha_tabela: raise Exception("Tag {{ITEM}} não encontrada.")
     for i in range(25):
         r = linha_tabela + i
         if i < len(df_epis):
@@ -161,7 +157,7 @@ def substituir_pptx(prs, mapeamento):
                         for tag, valor in mapeamento.items():
                             if tag in run.text: run.text = run.text.replace(tag, str(valor))
 
-# --- EXECUÇÃO DO PORTAL ---
+# --- APP ---
 aplicar_layout()
 df_colab = carregar_aba("Colaboradores")
 df_cargos = carregar_aba("Cargos")
@@ -183,16 +179,19 @@ if not df_colab.empty and not df_cargos.empty:
     t_nr = TEMPLATE_NR06_JUNIOR if tecnico_sel == "Técnico Junior" else TEMPLATE_NR06_SIMONE
 
     st.markdown("<br>", unsafe_allow_html=True)
-    g_os, g_ficha, g_cert = st.checkbox("OS", True), st.checkbox("Ficha EPI", True), st.checkbox("Certificado", True)
+    c1, c2, c3 = st.columns(3)
+    g_os, g_ficha, g_cert = c1.checkbox("OS", True), c2.checkbox("Ficha EPI", True), c3.checkbox("Certificado", True)
 
     if st.button("🚀 PROCESSAR DOCUMENTOS"):
         with st.spinner("Gerando documentos..."):
             cargo = str(dados_colab['Cargo']).strip()
             df_cargos['f_l'] = df_cargos['Função'].astype(str).apply(remover_acentos)
-            desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
+            cargo_norm = remover_acentos(cargo)
+            desc_f = df_cargos[df_cargos['f_l'] == cargo_norm]
 
             if not desc_f.empty:
-                desc_atv, arquivos = desc_f['Descrição da Atividade'].values[0], {}
+                desc_atv = desc_f['Descrição da Atividade'].values[0]
+                arquivos = {}
 
                 if g_os:
                     doc = Document(t_os)
@@ -208,7 +207,14 @@ if not df_colab.empty and not df_cargos.empty:
 
                 if g_cert:
                     prs = Presentation(t_nr)
-                    substituir_pptx(prs, {"{{NOME}}": nome_sel, "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
+                    # ADICIONADO ABAIXO: {{DATA_TREINAMENTO}} para preencher a data no certificado
+                    substituir_pptx(prs, {
+                        "{{NOME}}": nome_sel, 
+                        "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), 
+                        "{{FUNCAO}}": cargo, 
+                        "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"),
+                        "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."
+                    })
                     b = io.BytesIO(); prs.save(b); arquivos[f"NR06 {nome_sel}.pptx"] = b.getvalue()
 
                 if arquivos:
@@ -217,9 +223,8 @@ if not df_colab.empty and not df_cargos.empty:
                         for n, d in arquivos.items(): z.writestr(n, d)
                     st.success("✅ Documentos prontos!")
                     st.download_button("📦 BAIXAR KIT COMPLETO (ZIP)", z_b.getvalue(), f"Kit_{nome_sel}.zip", use_container_width=True)
-
-# RODAPÉ
-st.markdown("""<div class="footer">© 2026 Gestão Documentos | Versão 1.0 | Desenvolvido por: Dilceu Junior</div>""", unsafe_allow_html=True)
+            else:
+                st.error(f"Cargo '{cargo}' não encontrado na aba Cargos.")
 
 # RODAPÉ
 st.markdown("""<div class="footer">© 2026 Gestão Documentos | Versão 1.0 | Desenvolvido por: Dilceu Junior</div>""", unsafe_allow_html=True)
