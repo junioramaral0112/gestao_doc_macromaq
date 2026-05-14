@@ -17,7 +17,7 @@ st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 # Usar o diretório atual para facilitar o deploy no GitHub/Streamlit Cloud
 BASE_PATH = os.getcwd()
 
-# Caminhos dos arquivos (Coloque-os na mesma pasta do script)
+# Caminhos dos arquivos (Devem estar na raiz do repositório)
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
@@ -74,6 +74,11 @@ def aplicar_layout():
         logo = get_base64(LOGO_PATH)
         st.markdown(f"""
         <style>
+        /* REMOVER BARRA LATERAL E NAVEGAÇÃO NATIVA */
+        [data-testid="stSidebar"], [data-testid="stSidebarNav"] {{
+            display: none;
+        }}
+
         .stApp {{
             background-image: url("data:image/png;base64,{fundo}");
             background-size: cover;
@@ -167,8 +172,17 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
                 for tag, valor in mapeamento.items():
                     if tag in cell.value:
                         cell.value = cell.value.replace(tag, str(valor))
-    linha_tabela = next((cell.row for row in ws.iter_rows() for cell in row if cell.value and "{{ITEM}}" in str(cell.value)), None)
+    
+    linha_tabela = None
+    for row in ws.iter_rows():
+        for cell in row:
+            if cell.value and "{{ITEM}}" in str(cell.value):
+                linha_tabela = cell.row
+                break
+        if linha_tabela: break
+        
     if not linha_tabela: raise Exception("Tag {{ITEM}} não encontrada.")
+    
     for i in range(25):
         r = linha_tabela + i
         if i < len(df_epis):
@@ -181,6 +195,7 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
             ws.cell(row=r, column=8).value = datetime.now().strftime("%d/%m/%Y")
         else:
             for c in [1, 2, 5, 6, 7, 8]: ws.cell(row=r, column=c).value = ""
+            
     output = io.BytesIO()
     wb.save(output)
     return output.getvalue()
