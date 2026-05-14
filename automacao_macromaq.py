@@ -14,13 +14,10 @@ import base64
 # --- CONFIGURAÇÕES ---
 st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 
-# LÓGICA DE CAMINHO DINÂMICO
-if os.path.exists(r"C:\Users\dilceu.gomes\Documents"):
-    BASE_PATH = r"C:\Users\dilceu.gomes\Documents"
-else:
-    BASE_PATH = os.path.dirname(__file__) if "__file__" in locals() else "."
+# Usar o diretório atual para facilitar o deploy no GitHub/Streamlit Cloud
+BASE_PATH = os.getcwd()
 
-# Caminhos dos arquivos
+# Caminhos dos arquivos (Coloque-os na mesma pasta do script)
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
@@ -33,19 +30,42 @@ SHEET_ID = "1y98U3eK7JXJqQaMC0i7eFbwpvp97Nuyeml5Dis0UCUg"
 
 # --- UNIDADES ---
 UNIDADES = {
-    "SÃO JOSÉ": {"CNPJ": "83.675.413/0001-01", "ENDERECO": "BR 101, km 210 / Bairro: Picadas do Sul – São José – SC / CEP: 88106-100"},
-    "CHAPECÓ": {"CNPJ": "83.675.413/0002-84", "ENDERECO": "Rua Xanxerê, 360E – Bairro Líder – Chapecó/SC"},
-    "JOINVILLE": {"CNPJ": "83.675.413/0011-75", "ENDERECO": "BR101, KM17 – Sentido Norte – Bairro Sta Catarina – Joinville / SC"},
-    "PARANÁ": {"CNPJ": "83.675.413/0004-46", "ENDERECO": "Av. Juscelino K. de Oliveira, 3628 – Bairro CIC – Curitiba / PR"},
-    "SÃO PAULO": {"CNPJ": "83.675.413/0008-70", "ENDERECO": "Rua Goiabeira 105/125 – Bairro Roseira de Cima – Jaguariúna / SP"},
-    "MINAS GERAIS": {"CNPJ": "83.675.413/0014-18", "ENDERECO": "Anel Rodoviário Celso Mello Azevedo, 3713 - Bom Sucesso - BH/MG"},
-    "ITAJAÍ": {"CNPJ": "83.675.413/0013-37", "ENDERECO": "Av. Vereador Abrahão João Francisco, 2300 - Dom Bosco - Itajaí / SC"}
+    "SÃO JOSÉ": {
+        "CNPJ": "83.675.413/0001-01",
+        "ENDERECO": "BR 101, km 210 / Bairro: Picadas do Sul – São José – SC / CEP: 88106-100"
+    },
+    "CHAPECÓ": {
+        "CNPJ": "83.675.413/0002-84",
+        "ENDERECO": "Rua Xanxerê, 360E – Bairro Líder – Chapecó/SC"
+    },
+    "JOINVILLE": {
+        "CNPJ": "83.675.413/0011-75",
+        "ENDERECO": "BR101, KM17 – Sentido Norte – Bairro Sta Catarina – Joinville / SC"
+    },
+    "PARANÁ": {
+        "CNPJ": "83.675.413/0004-46",
+        "ENDERECO": "Av. Juscelino K. de Oliveira, 3628 – Bairro CIC – Curitiba / PR"
+    },
+    "SÃO PAULO": {
+        "CNPJ": "83.675.413/0008-70",
+        "ENDERECO": "Rua Goiabeira 105/125 – Bairro Roseira de Cima – Jaguariúna / SP"
+    },
+    "MINAS GERAIS": {
+        "CNPJ": "83.675.413/0014-18",
+        "ENDERECO": "Anel Rodoviário Celso Mello Azevedo, 3713 - Bom Sucesso - BH/MG"
+    },
+    "ITAJAÍ": {
+        "CNPJ": "83.675.413/0013-37",
+        "ENDERECO": "Av. Vereador Abrahão João Francisco, 2300 - Dom Bosco - Itajaí / SC"
+    }
 }
 
-# --- FUNÇÕES DE LAYOUT ---
+# --- LAYOUT E CSS ---
 def get_base64(bin_file):
-    if not os.path.exists(bin_file): return ""
-    with open(bin_file, 'rb') as f: data = f.read()
+    if not os.path.exists(bin_file):
+        return ""
+    with open(bin_file, 'rb') as f:
+        data = f.read()
     return base64.b64encode(data).decode()
 
 def aplicar_layout():
@@ -54,18 +74,48 @@ def aplicar_layout():
         logo = get_base64(LOGO_PATH)
         st.markdown(f"""
         <style>
-        .stApp {{ background-image: url("data:image/png;base64,{fundo}"); background-size: cover; background-position: center; background-attachment: fixed; }}
+        .stApp {{
+            background-image: url("data:image/png;base64,{fundo}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }}
         .stSelectbox label, div[data-testid="stCheckbox"] label p {{
-            color: white !important; background: rgba(0,0,0,0.7); padding: 5px 12px; border-radius: 8px; font-weight: bold;
+            color: white !important;
+            background: rgba(0,0,0,0.7);
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-weight: bold;
         }}
         .stButton > button {{
-            background: #2c3e50; color: #f9cc0b; border: 2px solid #f9cc0b; border-radius: 10px; height: 55px; font-weight: bold; width: 100%; font-size: 18px;
+            background: #2c3e50;
+            color: #f9cc0b;
+            border: 2px solid #f9cc0b;
+            border-radius: 10px;
+            height: 55px;
+            font-weight: bold;
+            width: 100%;
+            font-size: 18px;
         }}
         .header-container {{
-            display: flex; align-items: center; background: rgba(255,255,255,0.9); padding: 20px; border-radius: 15px; margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            background: rgba(255,255,255,0.9);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
         }}
         .footer {{
-            position: fixed; left: 0; bottom: 0; width: 100%; background: rgba(0,0,0,0.8); color: white; text-align: center; padding: 10px; font-size: 13px; z-index: 999;
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            text-align: center;
+            padding: 10px;
+            font-size: 13px;
+            z-index: 999;
         }}
         </style>
         <div class="header-container">
@@ -73,7 +123,8 @@ def aplicar_layout():
             <h1 style="margin-left:25px;color:#2c3e50;">Gestão SSMA Documentos</h1>
         </div>
         """, unsafe_allow_html=True)
-    except: st.title("Gestão SSMA Macromaq")
+    except:
+        st.title("Automação SSMA Macromaq")
 
 # --- FUNÇÕES AUXILIARES ---
 def remover_acentos(texto):
@@ -83,19 +134,18 @@ def remover_acentos(texto):
 @st.cache_data
 def carregar_aba(aba_nome):
     try:
-        aba_encoded = quote(aba_nome)
-        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={aba_encoded}"
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={quote(aba_nome)}"
         return pd.read_csv(url)
-    except: return pd.DataFrame()
+    except:
+        return pd.DataFrame()
 
 def data_extenso_pt():
-    meses = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
+    meses = {1:"Janeiro", 2:"Fevereiro", 3:"Março", 4:"Abril", 5:"Maio", 6:"Junho", 7:"Julho", 8:"Agosto", 9:"Setembro", 10:"Outubro", 11:"Novembro", 12:"Dezembro"}
     agora = datetime.now()
     return agora.strftime(f"%d de {meses[agora.month]} de %Y")
 
 def formatar_matricula(valor):
-    if pd.isna(valor) or valor == "": return ""
-    try: return str(int(float(valor)))
+    try: return str(int(float(valor))) if not pd.isna(valor) else ""
     except: return str(valor)
 
 def formatar_cpf(cpf):
@@ -107,7 +157,7 @@ def limpar_valor(valor):
     texto = str(valor).strip()
     return "" if texto.lower() in ["nan", "na"] else texto
 
-# --- PROCESSAMENTO ---
+# --- PROCESSAMENTO DE DOCUMENTOS ---
 def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
     wb = openpyxl.load_workbook(caminho_template)
     ws = wb.active
@@ -115,13 +165,9 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
         for cell in row:
             if isinstance(cell.value, str):
                 for tag, valor in mapeamento.items():
-                    if tag in cell.value: cell.value = cell.value.replace(tag, str(valor))
-    linha_tabela = None
-    for row in ws.iter_rows():
-        for cell in row:
-            if cell.value and "{{ITEM}}" in str(cell.value):
-                linha_tabela = cell.row; break
-        if linha_tabela: break
+                    if tag in cell.value:
+                        cell.value = cell.value.replace(tag, str(valor))
+    linha_tabela = next((cell.row for row in ws.iter_rows() for cell in row if cell.value and "{{ITEM}}" in str(cell.value)), None)
     if not linha_tabela: raise Exception("Tag {{ITEM}} não encontrada.")
     for i in range(25):
         r = linha_tabela + i
@@ -135,7 +181,9 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
             ws.cell(row=r, column=8).value = datetime.now().strftime("%d/%m/%Y")
         else:
             for c in [1, 2, 5, 6, 7, 8]: ws.cell(row=r, column=c).value = ""
-    output = io.BytesIO(); wb.save(output); return output.getvalue()
+    output = io.BytesIO()
+    wb.save(output)
+    return output.getvalue()
 
 def substituir_docx(doc, mapeamento):
     for p in doc.paragraphs:
@@ -157,7 +205,7 @@ def substituir_pptx(prs, mapeamento):
                         for tag, valor in mapeamento.items():
                             if tag in run.text: run.text = run.text.replace(tag, str(valor))
 
-# --- APP ---
+# --- APP LOGIC ---
 aplicar_layout()
 df_colab = carregar_aba("Colaboradores")
 df_cargos = carregar_aba("Cargos")
@@ -168,10 +216,10 @@ if not df_colab.empty and not df_cargos.empty:
         nome_sel = st.selectbox("1. Selecione o Colaborador:", df_colab['Nome Colaborador'].dropna().unique())
         dados_colab = df_colab[df_colab['Nome Colaborador'] == nome_sel].iloc[0]
     with col2:
-        unidade_p = str(dados_colab.get('Filial', dados_colab.get('Unidade', ''))).upper().strip()
-        lista_u = list(UNIDADES.keys())
-        idx = lista_u.index(unidade_p) if unidade_p in lista_u else 0
-        unid_sel = st.selectbox("2. Unidade para OS:", lista_u, index=idx)
+        unidade_plan = str(dados_colab.get('Filial', dados_colab.get('Unidade', ''))).upper().strip()
+        lista_unid = list(UNIDADES.keys())
+        idx = lista_unid.index(unidade_plan) if unidade_plan in lista_unid else 0
+        unid_sel = st.selectbox("2. Unidade para OS:", lista_unid, index=idx)
     with col3:
         tecnico_sel = st.selectbox("3. Técnico Responsável:", ["Técnico Junior", "Técnica Simone"])
 
@@ -185,37 +233,31 @@ if not df_colab.empty and not df_cargos.empty:
     if st.button("🚀 PROCESSAR DOCUMENTOS"):
         with st.spinner("Gerando documentos..."):
             cargo = str(dados_colab['Cargo']).strip()
+            arquivos = {}
             df_cargos['f_l'] = df_cargos['Função'].astype(str).apply(remover_acentos)
-            cargo_norm = remover_acentos(cargo)
-            desc_f = df_cargos[df_cargos['f_l'] == cargo_norm]
+            desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
 
             if not desc_f.empty:
                 desc_atv = desc_f['Descrição da Atividade'].values[0]
-                arquivos = {}
-
+                
                 if g_os:
                     doc = Document(t_os)
                     substituir_docx(doc, {"{{NOME}}": nome_sel, "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
-                    b = io.BytesIO(); doc.save(b); arquivos[f"OS {nome_sel}.docx"] = b.getvalue()
+                    b = io.BytesIO(); doc.save(b)
+                    arquivos[f"OS {nome_sel}.docx"] = b.getvalue()
 
                 if g_ficha:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
                     if not df_e.empty:
-                        m_f = {"{{NOME}}": nome_sel, "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', ''))}
+                        m_f = {"{{NOME}}": nome_sel, "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{CENTRO_CUSTO}}": ""}
                         arquivos[f"Ficha EPI {nome_sel}.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
 
                 if g_cert:
                     prs = Presentation(t_nr)
-                    # ADICIONADO ABAIXO: {{DATA_TREINAMENTO}} para preencher a data no certificado
-                    substituir_pptx(prs, {
-                        "{{NOME}}": nome_sel, 
-                        "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), 
-                        "{{FUNCAO}}": cargo, 
-                        "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"),
-                        "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."
-                    })
-                    b = io.BytesIO(); prs.save(b); arquivos[f"NR06 {nome_sel}.pptx"] = b.getvalue()
+                    substituir_pptx(prs, {"{{NOME}}": nome_sel, "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
+                    b = io.BytesIO(); prs.save(b)
+                    arquivos[f"NR06 {nome_sel}.pptx"] = b.getvalue()
 
                 if arquivos:
                     z_b = io.BytesIO()
@@ -226,5 +268,4 @@ if not df_colab.empty and not df_cargos.empty:
             else:
                 st.error(f"Cargo '{cargo}' não encontrado na aba Cargos.")
 
-# RODAPÉ
-st.markdown("""<div class="footer">© 2026 Gestão Documentos | Versão 1.0 | Desenvolvido por: Dilceu Junior</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="footer">© {datetime.now().year} Gestão Documentos | Desenvolvido por: Dilceu Junior</div>""", unsafe_allow_html=True)
