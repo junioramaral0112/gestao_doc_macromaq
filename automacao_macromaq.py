@@ -1,343 +1,302 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
-from datetime import datetime, timedelta
 from docx import Document
-from docx.shared import Inches, Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from io import BytesIO
+from pptx import Presentation
+import openpyxl
+import io
 import os
-from PIL import Image
+import zipfile
+import unicodedata
+from datetime import datetime
+from urllib.parse import quote
 import base64
 
-# =========================================================
-# CONFIGURAÇÃO DE CAMINHOS DINÂMICOS
-# =========================================================
+# --- CONFIGURAÇÕES ---
+st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 
-BASE_DIR = os.path.dirname(__file__) if "__file__" in locals() else "."
+# Usar o diretório atual para facilitar o deploy no GitHub/Streamlit Cloud
+BASE_PATH = os.getcwd()
 
-def localizar_arquivo(caminho_local, nome_arquivo):
-    if os.path.exists(caminho_local):
-        return caminho_local
-    caminho_projeto = os.path.join(BASE_DIR, nome_arquivo)
-    return caminho_projeto if os.path.exists(caminho_projeto) else None
+# Caminhos dos arquivos (Devem estar na raiz do repositório)
+FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
+LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
+TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
+TEMPLATE_OS_JUNIOR = os.path.join(BASE_PATH, "template_os_Junior.docx")
+TEMPLATE_NR06_JUNIOR = os.path.join(BASE_PATH, "template_nr06_Junior.pptx")
+TEMPLATE_OS_SIMONE = os.path.join(BASE_PATH, "template_os_simone.docx")
+TEMPLATE_NR06_SIMONE = os.path.join(BASE_PATH, "template_nr06_simone.pptx")
 
-# Caminhos dos arquivos
-PATH_ASO_IMG = localizar_arquivo(r"C:\Users\dilceu.gomes\Desktop\sistema_aso\ASO.png", "ASO.png")
-PATH_LOGO = localizar_arquivo(r"C:\Users\dilceu.gomes\Desktop\sistema_aso\logo.png", "logo.png")
-PATH_LOGO_DOC = localizar_arquivo(r"C:\Users\dilceu.gomes\Desktop\sistema_aso\adivitta.png", "adivitta.png")
+SHEET_ID = "1y98U3eK7JXJqQaMC0i7eFbwpvp97Nuyeml5Dis0UCUg"
 
-# Função para converter imagem para Base64
-def carregar_imagem_base64(path):
-    if path and os.path.exists(path):
-        with open(path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode()
-    return None
-
-# =========================================================
-# CONFIGURAÇÃO DA PÁGINA
-# =========================================================
-
-try:
-    if PATH_ASO_IMG:
-        page_icon = Image.open(PATH_ASO_IMG)
-    else:
-        page_icon = "🛡️"
-except:
-    page_icon = "🛡️"
-
-st.set_page_config(
-    page_title="Gestão ASO Pro",
-    layout="wide",
-    page_icon=page_icon
-)
-
-# =========================================================
-# INICIALIZAÇÃO DO HISTÓRICO DE AGENDADOS (SESSION STATE)
-# =========================================================
-if "agendados" not in st.session_state:
-    st.session_state["agendados"] = set()
-
-# =========================================================
-# CSS GLOBAL E TOPO PERSONALIZADO
-# =========================================================
-
-aso_base64 = carregar_imagem_base64(PATH_ASO_IMG)
-
-st.markdown(f"""
-<style>
-/* ESCONDER NAVEGAÇÃO AUTOMÁTICA */
-[data-testid="stSidebarNav"] {{display: none !important;}}
-
-/* FUNDO E ESTILOS GERAIS */
-.stApp {{ background-color: #f1f5f9; }}
-section[data-testid="stSidebar"] {{ background: linear-gradient(180deg, #8390a8, #1e293b); }}
-section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] p {{ color: white !important; }}
-div[data-testid="metric-container"] {{ background: white; border-radius: 18px; padding: 15px; border: 1px solid #e2e8f0; box-shadow: 0 4px 18px rgba(0,0,0,0.06); }}
-
-/* BOTÃO DE DOWNLOAD (PRINCIPAL) */
-.stDownloadButton button {{ width: 100%; background: linear-gradient(90deg, #2563eb, #1d4ed8); color: white; border-radius: 12px; font-weight: bold; }}
-
-/* AJUSTE DO BOTÃO CHECKLIST NA SIDEBAR (RESOLVE TEXTO APAGADO) */
-section[data-testid="stSidebar"] .stButton > button {{
-    background-color: #2563eb !important;
-    color: white !important;
-    border-radius: 12px !important;
-    border: 1px solid rgba(255,255,255,0.3) !important;
-    font-weight: bold !important;
-    height: 45px !important;
-    transition: 0.3s;
-}}
-
-section[data-testid="stSidebar"] .stButton > button:hover {{
-    background-color: #1d4ed8 !important;
-    border: 1px solid #f9cc0b !important;
-}}
-
-.footer {{ position: fixed; left: 0; bottom: 0; width: 100%; background: rgba(0,0,0,0.8); color: white; text-align: center; padding: 10px; font-size: 13px; z-index: 999; }}
-
-.menu-titulo {{
-    color: white;
-    font-weight: bold;
-    font-size: 14px;
-    margin-top: 20px;
-    margin-bottom: 10px;
-    border-bottom: 1px solid rgba(255,255,255,0.2);
-    padding-bottom: 5px;
-}}
-
-/* TÍTULO COM IMAGEM AMPLIADA */
-.header-wrapper {{
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    margin-bottom: 5px;
-}}
-.main-title {{
-    font-size: 40px;
-    font-weight: 800;
-    color: #111827;
-    margin: 0;
-}}
-.sub-title {{
-    color: #64748b;
-    margin-bottom: 25px;
-    margin-left: 120px;
-}}
-</style>
-
-<div class="header-wrapper">
-    {"<img src='data:image/png;base64," + aso_base64 + "' width='100'>" if aso_base64 else "🛡️"}
-    <h1 class="main-title">Gestão ASO Pro</h1>
-</div>
-<div class="sub-title">Sistema Inteligente de Gestão de ASO</div>
-""", unsafe_allow_html=True)
-
-# =========================================================
-# LÓGICA DE DADOS
-# =========================================================
-
-# Planilha 1: Controle de Vencimentos
-SHEET_ID = "1G_oVT9gK-n_jGh5R4g65qUwK_MfQGvCX-SA4NHNNflU"
+# --- UNIDADES ---
 UNIDADES = {
-    "D-ITU": "1323067532", "D-MG": "1071212860", 
-    "J-CHP": "1549718037", "S-SJ": "1712391604", "J-CTBA": "145843404"
+    "SÃO JOSÉ": {
+        "CNPJ": "83.675.413/0001-01",
+        "ENDERECO": "BR 101, km 210 / Bairro: Picadas do Sul – São José – SC / CEP: 88106-100"
+    },
+    "CHAPECÓ": {
+        "CNPJ": "83.675.413/0002-84",
+        "ENDERECO": "Rua Xanxerê, 360E – Bairro Líder – Chapecó/SC"
+    },
+    "JOINVILLE": {
+        "CNPJ": "83.675.413/0011-75",
+        "ENDERECO": "BR101, KM17 – Sentido Norte – Bairro Sta Catarina – Joinville / SC"
+    },
+    "PARANÁ": {
+        "CNPJ": "83.675.413/0004-46",
+        "ENDERECO": "Av. Juscelino K. de Oliveira, 3628 – Bairro CIC – Curitiba / PR"
+    },
+    "SÃO PAULO": {
+        "CNPJ": "83.675.413/0008-70",
+        "ENDERECO": "Rua Goiabeira 105/125 – Bairro Roseira de Cima – Jaguariúna / SP"
+    },
+    "MINAS GERAIS": {
+        "CNPJ": "83.675.413/0014-18",
+        "ENDERECO": "Anel Rodoviário Celso Mello Azevedo, 3713 - Bom Sucesso - BH/MG"
+    },
+    "ITAJAÍ": {
+        "CNPJ": "83.675.413/0013-37",
+        "ENDERECO": "Av. Vereador Abrahão João Francisco, 2300 - Dom Bosco - Itajaí / SC"
+    }
 }
 
-# Planilha 2: Cadastro Geral de Colaboradores
-SHEET_ID_GLOBAL = "1y98U3eK7JXJqQaMC0i7eFbwpvp97Nuyeml5Dis0UCUg"
-GID_COLABORADORES = "595994340"
+# --- LAYOUT E CSS ---
+def get_base64(bin_file):
+    if not os.path.exists(bin_file):
+        return ""
+    with open(bin_file, 'rb') as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
 
+def aplicar_layout():
+    try:
+        fundo = get_base64(FUNDO_PATH)
+        logo = get_base64(LOGO_PATH)
+        st.markdown(f"""
+        <style>
+        /* REMOVER BARRA LATERAL E NAVEGAÇÃO NATIVA */
+        [data-testid="stSidebar"], [data-testid="stSidebarNav"] {{
+            display: none;
+        }}
+
+        .stApp {{
+            background-image: url("data:image/png;base64,{fundo}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }}
+        .stSelectbox label, div[data-testid="stCheckbox"] label p {{
+            color: white !important;
+            background: rgba(0,0,0,0.7);
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-weight: bold;
+        }}
+        .stButton > button {{
+            background: #2c3e50;
+            color: #f9cc0b;
+            border: 2px solid #f9cc0b;
+            border-radius: 10px;
+            height: 55px;
+            font-weight: bold;
+            width: 100%;
+            font-size: 18px;
+        }}
+        .header-container {{
+            display: flex;
+            align-items: center;
+            background: rgba(255,255,255,0.9);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }}
+        .footer {{
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            text-align: center;
+            padding: 10px;
+            font-size: 13px;
+            z-index: 999;
+        }}
+        </style>
+        <div class="header-container">
+            <img src="data:image/png;base64,{logo}" width="320">
+            <h1 style="margin-left:25px;color:#2c3e50;">Gestão SSMA Documentos</h1>
+        </div>
+        """, unsafe_allow_html=True)
+    except:
+        st.title("Automação SSMA Macromaq")
+
+# --- FUNÇÕES AUXILIARES ---
+def remover_acentos(texto):
+    if not isinstance(texto, str): return str(texto)
+    return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
+
+# ATUALIZAÇÃO: Cache expira automaticamente em 5 minutos (300 segundos) para planilhas dinâmicas
 @st.cache_data(ttl=300)
-def load_data(gid):
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
-    df = pd.read_csv(url)
-    df.columns = df.columns.str.strip()
-    return df
+def carregar_aba(aba_nome):
+    try:
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={quote(aba_nome)}"
+        return pd.read_csv(url)
+    except:
+        return pd.DataFrame()
 
-def gerar_docx(dados, tipo, data_sugestao):
-    doc = Document()
-    if PATH_LOGO_DOC and os.path.exists(PATH_LOGO_DOC):
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.add_run().add_picture(PATH_LOGO_DOC, width=Inches(1.2))
+def data_extenso_pt():
+    meses = {1:"Janeiro", 2:"Fevereiro", 3:"Março", 4:"Abril", 5:"Maio", 6:"Junho", 7:"Julho", 8:"Agosto", 9:"Setembro", 10:"Outubro", 11:"Novembro", 12:"Dezembro"}
+    agora = datetime.now()
+    return agora.strftime(f"%d de {meses[agora.month]} de %Y")
 
-    titulo = doc.add_paragraph()
-    titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = titulo.add_run(f"FORMULÁRIO PARA AGENDAMENTO {tipo}")
-    run.bold, run.font.size = True, Pt(16)
+def formatar_matricula(valor):
+    try: return str(int(float(valor))) if not pd.isna(valor) else ""
+    except: return str(valor)
 
-    table = doc.add_table(rows=7, cols=2)
-    table.style = "Table Grid"
-    labels = ["Nome Completo", "Cargo", "Setor", "Unidade", "Cliente", "Local", "Data Sugestão"]
-    valores = [str(dados["Nome"]), str(dados["Cargo"]), str(dados["Setor"]), str(dados["UNIDADE"]), "MACROMAQ", "Arapoti", data_sugestao.strftime("%d/%m/%Y")]
+def formatar_cpf(cpf):
+    cpf = ''.join(filter(str.isdigit, str(cpf))).zfill(11)
+    return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
 
-    for i, (l, v) in enumerate(zip(labels, valores)):
-        table.rows[i].cells[0].text, table.rows[i].cells[1].text = l, v
-        table.rows[i].cells[0].paragraphs[0].runs[0].bold = True
+def limpar_valor(valor):
+    if pd.isna(valor): return ""
+    texto = str(valor).strip()
+    return "" if texto.lower() in ["nan", "na"] else texto
 
-    target = BytesIO()
-    doc.save(target)
-    return target.getvalue()
-
-# =========================================================
-# SIDEBAR
-# =========================================================
-
-if PATH_LOGO and os.path.exists(PATH_LOGO):
-    st.sidebar.image(PATH_LOGO, width=300)
-
-aba_nome = st.sidebar.selectbox(
-    "🏢 Selecione a unidade",
-    list(UNIDADES.keys())
-)
-
-st.sidebar.success("✅ Sistema Online")
-
-st.sidebar.markdown("<br>", unsafe_allow_html=True)
-st.sidebar.markdown(
-    """<div class='menu-titulo'>⚡ ACESSO RÁPIDO</div>""",
-    unsafe_allow_html=True
-)
-
-if st.sidebar.button("📋 CHECKLIST SSMA"):
-    st.switch_page("pages/app_ssma_ia.py")
-
-# =========================================================
-# PROCESSAMENTO PRINCIPAL
-# =========================================================
-try:
-    # 1. Carrega dados da Planilha 1 (Controle de Prazos por Unidade)
-    df = load_data(UNIDADES[aba_nome])
+# --- PROCESSAMENTO DE DOCUMENTOS ---
+def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
+    wb = openpyxl.load_workbook(caminho_template)
+    ws = wb.active
+    for row in ws.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str):
+                for tag, valor in mapeamento.items():
+                    if tag in cell.value:
+                        cell.value = cell.value.replace(tag, str(valor))
+        
+    linha_tabela = None
+    for row in ws.iter_rows():
+        for cell in row:
+            if cell.value and "{{ITEM}}" in str(cell.value):
+                linha_tabela = cell.row
+                break
+        if linha_tabela: break
+        
+    if not linha_tabela: raise Exception("Tag {{ITEM}} não encontrada.")
     
-    # 2. Carrega dados da Planilha 2 (Cadastro Global por Índices Fixos)
-    url_global = f"https://docs.google.com/spreadsheets/d/{SHEET_ID_GLOBAL}/export?format=csv&gid={GID_COLABORADORES}"
-    df_global_raw = pd.read_csv(url_global, header=None)
-    
-    # Monta DataFrame estruturado da planilha global baseado nas letras das colunas informadas
-    df_global = pd.DataFrame()
-    df_global["Nome"] = df_global_raw[8].astype(str).str.strip()       # Coluna I (Índice 8)
-    df_global["Cargo"] = df_global_raw[5].astype(str).str.strip()      # Coluna F (Índice 5)
-    df_global["Setor"] = df_global_raw[4].astype(str).str.strip()      # Coluna E (Índice 4)
-    df_global["UNIDADE"] = df_global_raw[2].astype(str).str.strip()    # Coluna C (Índice 2)
-    df_global["Matricula"] = df_global_raw[6].astype(str).str.strip()  # Coluna G (Índice 6)
-    df_global["CPF"] = df_global_raw[18].astype(str).str.strip()       # Coluna S (Índice 18)
-
-    # Filtra linhas de cabeçalhos repetidos e registros nulos
-    df_global = df_global[df_global["Nome"].str.lower() != "nome"]
-    df_global = df_global[df_global["Nome"] != "nan"]
-
-    # ---------------------------------------------------------
-    # SEÇÃO INTERNÁUTICA: NOVO MÓDULO DE BUSCA GLOBAL
-    # ---------------------------------------------------------
-    st.markdown("### 🔍 Busca Ativa e Emissão de Guia Avulsa")
-    st.markdown("<small>Use este campo para encontrar qualquer colaborador cadastrado e emitir guias de mudança de risco, retorno, etc.</small>", unsafe_allow_html=True)
-    
-    lista_nomes = sorted(df_global["Nome"].unique())
-    nome_selecionado = st.selectbox("Digite ou selecione o nome do colaborador:", [""] + lista_nomes, index=0)
-
-    if nome_selecionado != "":
-        dados_colaborador = df_global[df_global["Nome"] == nome_selecionado].iloc[0]
-        colab_nome = dados_colaborador['Nome']
-        
-        # Verifica se já está agendado
-        status_agendado_busca = ""
-        if colab_nome in st.session_state["agendados"]:
-            status_agendado_busca = '<span style="background-color: #64748b; color: white; padding: 4px 10px; border-radius: 8px; font-size: 14px; margin-left: 15px;">📌 AGENDADO</span>'
-        
-        html_busca = f"""
-        <div style="background:#f8fafc; border-left:8px solid #3b82f6; border-radius:18px; padding:22px; margin-top:10px; margin-bottom:15px; box-shadow:0 4px 18px rgba(0,0,0,0.05); font-family:Arial;">
-            <div style="font-size:22px; font-weight:700; color:#1e3a8a; margin-bottom:10px;">
-                🔍 Registro Encontrado: {colab_nome} {status_agendado_busca}
-            </div>
-            <div style="color:#475569; font-size:15px; line-height:1.8;">
-                <b>👔 Cargo:</b> {dados_colaborador['Cargo']}<br>
-                <b>🏭 Setor:</b> {dados_colaborador['Setor']}<br>
-                <b>🏢 Unidade Base:</b> {dados_colaborador['UNIDADE']}<br>
-                <b>🆔 Matrícula:</b> {dados_colaborador['Matricula']}
-            </div>
-            <div style="margin-top:12px; font-size:14px; font-weight:bold; color:#3b82f6;">✨ PRONTO PARA EMISSÃO AVULSA</div>
-        </div>"""
-        
-        components.html(html_busca, height=210)
-        
-        c_busca1, c_busca2, c_busca3 = st.columns([2, 2, 1])
-        with c_busca1:
-            tipo_busca = st.selectbox("Tipo de Exame (Avulso)", ["MUDANÇA DE RISCO", "RETORNO", "PERIÓDICO", "ADMISSIONAL", "DEMISSIONAL"], key="tipo_busca")
-        with c_busca2:
-            dt_s_busca = st.date_input("Data sugerida (Avulso)", value=datetime.now() + timedelta(days=2), key="data_busca")
-        with c_busca3:
-            st.markdown("<br>", unsafe_allow_html=True)
-            foi_agendado_b = st.checkbox("Marcar como Agendado", value=(colab_nome in st.session_state["agendados"]), key="chk_busca")
-            if foi_agendado_b:
-                st.session_state["agendados"].add(colab_nome)
-            else:
-                st.session_state["agendados"].discard(colab_nome)
-        
-        btn_doc_busca = gerar_docx(dados_colaborador, tipo_busca, dt_s_busca)
-        st.download_button(
-            label=f"📥 Baixar Formulário de {colab_nome.split()[0]}", 
-            data=btn_doc_busca, 
-            file_name=f"ASO_AVULSO_{colab_nome}.docx", 
-            key="btn_busca_download"
-        )
-        st.markdown("---")
-
-    # ---------------------------------------------------------
-    # MONITORAMENTO AUTOMÁTICO DE PRAZOS (ESTRUTURA ORIGINAL)
-    # ---------------------------------------------------------
-    st.markdown("### 📊 Monitoramento Automático de Prazos (Próximos Vencimentos)")
-    if not df.empty:
-        hoje = datetime.now()
-        df["Venc"] = pd.to_datetime(df["Venc"], dayfirst=True, errors="coerce")
-        df = df.dropna(subset=["Venc"])
-        df["Dias"] = (df["Venc"] - hoje).dt.days
-        alertas = df[df["Venc"] <= hoje + timedelta(days=10)].copy().sort_values(by="Venc")
-
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("🏢 Unidade", aba_nome); c2.metric("👥 Colaboradores", len(df))
-        c3.metric("⚠️ Pendentes", len(alertas)); c4.metric("🚨 Vencidos", len(alertas[alertas["Dias"] < 0]))
-
-        st.markdown("---")
-        cols = st.columns(2)
-        for idx, (_, row) in enumerate(alertas.iterrows()):
-            col = cols[idx % 2]
-            dias = int(row["Dias"])
-            nome_alerta = row["Nome"]
+    for i in range(25):
+        r = linha_tabela + i
+        if i < len(df_epis):
+            item = df_epis.iloc[i]
+            ws.cell(row=r, column=1).value = f"{i+1:02d}"
+            ws.cell(row=r, column=2).value = limpar_valor(item.get('Descrição', ''))
+            ws.cell(row=r, column=5).value = limpar_valor(item.get('C.A.', ''))
+            ws.cell(row=r, column=6).value = limpar_valor(item.get('qt.', ''))
+            ws.cell(row=r, column=7).value = limpar_valor(item.get('unid.', ''))
+            ws.cell(row=r, column=8).value = datetime.now().strftime("%d/%m/%Y")
+        else:
+            for c in [1, 2, 5, 6, 7, 8]: ws.cell(row=r, column=c).value = ""
             
-            # Define cores e status baseado no prazo
-            cor, fundo, status = ("#ef4444", "#fff1f2", "🚨 ASO VENCIDO") if dias < 0 else (("#f59e0b", "#fff7ed", f"⚠️ Vence em {dias} dias") if dias <= 3 else ("#10b981", "#ecfdf5", f"✅ Vence em {dias} dias"))
+    output = io.BytesIO()
+    wb.save(output)
+    return output.getvalue()
 
-            # Adiciona o selo visual de agendado se estiver marcado
-            badge_agendado = ""
-            if nome_alerta in st.session_state["agendados"]:
-                badge_agendado = '<span style="background-color: #64748b; color: white; padding: 3px 8px; border-radius: 6px; font-size: 13px; font-weight: normal; margin-left: 10px;">📌 AGENDADO</span>'
+def substituir_docx(doc, mapeamento):
+    for p in doc.paragraphs:
+        for tag, valor in mapeamento.items():
+            if tag in p.text: p.text = p.text.replace(tag, str(valor))
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    for tag, valor in mapeamento.items():
+                        if tag in p.text: p.text = p.text.replace(tag, str(valor))
 
-            html_card = f"""
-            <div style="background:{fundo}; border-left:8px solid {cor}; border-radius:18px; padding:22px; margin-bottom:15px; box-shadow:0 4px 18px rgba(0,0,0,0.08); font-family:Arial;">
-                <div style="font-size:22px; font-weight:700; color:#111827; margin-bottom:10px;">{nome_alerta} {badge_agendado}</div>
-                <div style="color:#475569; font-size:15px; line-height:1.8;">👔 <b>Cargo:</b> {row['Cargo']}<br>🏭 <b>Setor:</b> {row['Setor']}<br>📅 <b>Vencimento:</b> {row['Venc'].strftime('%d/%m/%Y')}</div>
-                <div style="margin-top:15px; font-size:16px; font-weight:bold; color:{cor};">{status}</div>
-            </div>"""
+def substituir_pptx(prs, mapeamento):
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "text_frame"):
+                for paragraph in shape.text_frame.paragraphs:
+                    for run in paragraph.runs:
+                        for tag, valor in mapeamento.items():
+                            if tag in run.text: run.text = run.text.replace(tag, str(valor))
 
-            with col:
-                components.html(html_card, height=250)
-                with st.expander(f"📄 Gerar Agendamento - {nome_alerta.split()[0]}"):
-                    c_card1, c_card2 = st.columns([3, 2])
-                    with c_card1:
-                        tipo = st.selectbox("Tipo de Exame", ["PERIÓDICO", "MUDANÇA DE RISCO", "RETORNO"], key=f"t_{idx}")
-                        dt_s = st.date_input("Data sugerida", value=hoje + timedelta(days=2), key=f"d_{idx}")
-                    with c_card2:
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        foi_agendado_card = st.checkbox("Marcar como Agendado", value=(nome_alerta in st.session_state["agendados"]), key=f"chk_{idx}")
-                        if foi_agendado_card:
-                            st.session_state["agendados"].add(nome_alerta)
-                        else:
-                            st.session_state["agendados"].discard(nome_alerta)
-                            
-                    btn_doc = gerar_docx(row, tipo, dt_s)
-                    st.download_button(label="📥 Baixar Documento", data=btn_doc, file_name=f"ASO_{nome_alerta}.docx", key=f"b_{idx}")
-except Exception as e:
-    st.error(f"Erro ao processar dados: {e}")
+# --- APP LOGIC ---
+aplicar_layout()
+
+# Adicionado um botão manual opcional caso você queira forçar a atualização ANTES dos 5 minutos do cache
+if st.button("🔄 Atualizar Dados da Planilha Agora"):
+    st.cache_data.clear()
+    st.rerun()
+
+df_colab = carregar_aba("Colaboradores")
+df_cargos = carregar_aba("Cargos")
+
+if not df_colab.empty and not df_cargos.empty:
+    # ATUALIZAÇÃO: Cria uma coluna tratada removendo espaços fantasmas e aplicando padrão Title Case
+    df_colab['Nome_Formatado'] = df_colab['Nome Colaborador'].astype(str).str.strip().str.title()
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        # Exibe os nomes organizados em ordem alfabética e sem erros de digitação
+        lista_nomes = sorted(df_colab['Nome_Formatado'].dropna().unique())
+        nome_sel = st.selectbox("1. Selecione o Colaborador:", lista_nomes)
+        
+        # Filtra na planilha o colaborador selecionado utilizando a string higienizada
+        dados_colab = df_colab[df_colab['Nome_Formatado'] == nome_sel].iloc[0]
+        
+    with col2:
+        unidade_plan = str(dados_colab.get('Filial', dados_colab.get('Unidade', ''))).upper().strip()
+        lista_unid = list(UNIDADES.keys())
+        idx = lista_unid.index(unidade_plan) if unidade_plan in lista_unid else 0
+        unid_sel = st.selectbox("2. Unidade para OS:", lista_unid, index=idx)
+    with col3:
+        tecnico_sel = st.selectbox("3. Técnico Responsável:", ["Técnico Junior", "Técnica Simone"])
+
+    t_os = TEMPLATE_OS_JUNIOR if tecnico_sel == "Técnico Junior" else TEMPLATE_OS_SIMONE
+    t_nr = TEMPLATE_NR06_JUNIOR if tecnico_sel == "Técnico Junior" else TEMPLATE_NR06_SIMONE
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    g_os, g_ficha, g_cert = c1.checkbox("OS", True), c2.checkbox("Ficha EPI", True), c3.checkbox("Certificado", True)
+
+    if st.button("🚀 PROCESSAR DOCUMENTOS"):
+        with st.spinner("Gerando documentos..."):
+            cargo = str(dados_colab['Cargo']).strip()
+            arquivos = {}
+            df_cargos['f_l'] = df_cargos['Função'].astype(str).apply(remover_acentos)
+            desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
+
+            if not desc_f.empty:
+                desc_atv = desc_f['Descrição da Atividade'].values[0]
+                
+                # ATUALIZAÇÃO: Passamos o valor original "dados_colab['Nome Colaborador']" para os documentos
+                if g_os:
+                    doc = Document(t_os)
+                    substituir_docx(doc, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
+                    b = io.BytesIO(); doc.save(b)
+                    arquivos[f"OS {nome_sel}.docx"] = b.getvalue()
+
+                if g_ficha:
+                    df_e = carregar_aba(cargo)
+                    if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
+                    if not df_e.empty:
+                        m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{CENTRO_CUSTO}}": ""}
+                        arquivos[f"Ficha EPI {nome_sel}.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
+
+                if g_cert:
+                    prs = Presentation(t_nr)
+                    substituir_pptx(prs, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
+                    b = io.BytesIO(); prs.save(b)
+                    arquivos[f"NR06 {nome_sel}.pptx"] = b.getvalue()
+
+                if arquivos:
+                    z_b = io.BytesIO()
+                    with zipfile.ZipFile(z_b, "w") as z:
+                        for n, d in arquivos.items(): z.writestr(n, d)
+                    st.success("✅ Documentos prontos!")
+                    st.download_button("📦 BAIXAR KIT COMPLETO (ZIP)", z_b.getvalue(), f"Kit_{nome_sel}.zip", use_container_width=True)
+            else:
+                st.error(f"Cargo '{cargo}' não encontrado na aba Cargos.")
 
 st.markdown("""<div class="footer">© 2026 Gestão Documentos | Desenvolvido por: Dilceu Junior</div>""", unsafe_allow_html=True)
