@@ -136,7 +136,8 @@ def remover_acentos(texto):
     if not isinstance(texto, str): return str(texto)
     return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
 
-@st.cache_data
+# ATUALIZAÇÃO: Cache expira automaticamente em 5 minutos (300 segundos) para planilhas dinâmicas
+@st.cache_data(ttl=300)
 def carregar_aba(aba_nome):
     try:
         url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={quote(aba_nome)}"
@@ -172,7 +173,7 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
                 for tag, valor in mapeamento.items():
                     if tag in cell.value:
                         cell.value = cell.value.replace(tag, str(valor))
-    
+        
     linha_tabela = None
     for row in ws.iter_rows():
         for cell in row:
@@ -222,14 +223,28 @@ def substituir_pptx(prs, mapeamento):
 
 # --- APP LOGIC ---
 aplicar_layout()
+
+# Adicionado um botão manual opcional caso você queira forçar a atualização ANTES dos 5 minutos do cache
+if st.button("🔄 Atualizar Dados da Planilha Agora"):
+    st.cache_data.clear()
+    st.rerun()
+
 df_colab = carregar_aba("Colaboradores")
 df_cargos = carregar_aba("Cargos")
 
 if not df_colab.empty and not df_cargos.empty:
+    # ATUALIZAÇÃO: Cria uma coluna tratada removendo espaços fantasmas e aplicando padrão Title Case
+    df_colab['Nome_Formatado'] = df_colab['Nome Colaborador'].astype(str).str.strip().str.title()
+    
     col1, col2, col3 = st.columns(3)
     with col1:
-        nome_sel = st.selectbox("1. Selecione o Colaborador:", df_colab['Nome Colaborador'].dropna().unique())
-        dados_colab = df_colab[df_colab['Nome Colaborador'] == nome_sel].iloc[0]
+        # Exibe os nomes organizados em ordem alfabética e sem erros de digitação
+        lista_nomes = sorted(df_colab['Nome_Formatado'].dropna().unique())
+        nome_sel = st.selectbox("1. Selecione o Colaborador:", lista_nomes)
+        
+        # Filtra na planilha o colaborador selecionado utilizando a string higienizada
+        dados_colab = df_colab[df_colab['Nome_Formatado'] == nome_sel].iloc[0]
+        
     with col2:
         unidade_plan = str(dados_colab.get('Filial', dados_colab.get('Unidade', ''))).upper().strip()
         lista_unid = list(UNIDADES.keys())
@@ -255,9 +270,10 @@ if not df_colab.empty and not df_cargos.empty:
             if not desc_f.empty:
                 desc_atv = desc_f['Descrição da Atividade'].values[0]
                 
+                # ATUALIZAÇÃO: Passamos o valor original "dados_colab['Nome Colaborador']" para os documentos
                 if g_os:
                     doc = Document(t_os)
-                    substituir_docx(doc, {"{{NOME}}": nome_sel, "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
+                    substituir_docx(doc, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
                     b = io.BytesIO(); doc.save(b)
                     arquivos[f"OS {nome_sel}.docx"] = b.getvalue()
 
@@ -265,12 +281,12 @@ if not df_colab.empty and not df_cargos.empty:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
                     if not df_e.empty:
-                        m_f = {"{{NOME}}": nome_sel, "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{CENTRO_CUSTO}}": ""}
+                        m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{CENTRO_CUSTO}}": ""}
                         arquivos[f"Ficha EPI {nome_sel}.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
 
                 if g_cert:
                     prs = Presentation(t_nr)
-                    substituir_pptx(prs, {"{{NOME}}": nome_sel, "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
+                    substituir_pptx(prs, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
                     b = io.BytesIO(); prs.save(b)
                     arquivos[f"NR06 {nome_sel}.pptx"] = b.getvalue()
 
@@ -282,5 +298,3 @@ if not df_colab.empty and not df_cargos.empty:
                     st.download_button("📦 BAIXAR KIT COMPLETO (ZIP)", z_b.getvalue(), f"Kit_{nome_sel}.zip", use_container_width=True)
             else:
                 st.error(f"Cargo '{cargo}' não encontrado na aba Cargos.")
-
-st.markdown(f"""<div class="footer">© {datetime.now().year} Gestão Documentos | Desenvolvido por: Dilceu Junior</div>""", unsafe_allow_html=True)
