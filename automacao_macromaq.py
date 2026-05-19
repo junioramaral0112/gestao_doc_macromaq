@@ -7,6 +7,7 @@ import io
 import os
 import zipfile
 import unicodedata
+import subprocess  # Novo: Importado para rodar a conversão via LibreOffice
 from datetime import datetime
 from urllib.parse import quote
 import base64
@@ -136,7 +137,6 @@ def remover_acentos(texto):
     if not isinstance(texto, str): return str(texto)
     return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
 
-# ATUALIZAÇÃO: Cache expira automaticamente em 5 minutos (300 segundos) para planilhas dinâmicas
 @st.cache_data(ttl=300)
 def carregar_aba(aba_nome):
     try:
@@ -162,6 +162,36 @@ def limpar_valor(valor):
     if pd.isna(valor): return ""
     texto = str(valor).strip()
     return "" if texto.lower() in ["nan", "na"] else texto
+
+# Nova Função: Converte qualquer arquivo suportado para PDF usando o comando LibreOffice do Servidor Linux
+def converter_para_pdf_linux(conteudo_arquivo, nome_original):
+    try:
+        # Cria arquivos temporários para processamento em lote seguro
+        temp_input = os.path.join(BASE_PATH, nome_original)
+        with open(temp_input, "wb") as f:
+            f.write(conteudo_arquivo)
+        
+        # Executa comando do LibreOffice em modo 'headless' (sem interface gráfica)
+        # Esse comando converte o arquivo gerado e salva o .pdf no mesmo diretório
+        subprocess.run([
+            'libreoffice', '--headless', '--convert-to', 'pdf', temp_input,
+            '--outdir', BASE_PATH
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        
+        nome_pdf = os.path.splitext(nome_original)[0] + ".pdf"
+        temp_pdf_path = os.path.join(BASE_PATH, nome_pdf)
+        
+        if os.path.exists(temp_pdf_path):
+            with open(temp_pdf_path, "rb") as f:
+                pdf_bytes = f.read()
+            
+            # Limpeza de resíduos de arquivos temporários do servidor
+            os.remove(temp_input)
+            os.remove(temp_pdf_path)
+            return pdf_bytes, nome_pdf
+    except Exception as e:
+        st.warning(f"Não foi possível converter {nome_original} para PDF (Certifique-se de que o LibreOffice está configurado). Erro: {e}")
+    return None, None
 
 # --- PROCESSAMENTO DE DOCUMENTOS ---
 def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
@@ -224,7 +254,6 @@ def substituir_pptx(prs, mapeamento):
 # --- APP LOGIC ---
 aplicar_layout()
 
-# Adicionado um botão manual opcional caso você queira forçar a atualização ANTES dos 5 minutos do cache
 if st.button("🔄 Atualizar Dados da Planilha Agora"):
     st.cache_data.clear()
     st.rerun()
@@ -233,16 +262,12 @@ df_colab = carregar_aba("Colaboradores")
 df_cargos = carregar_aba("Cargos")
 
 if not df_colab.empty and not df_cargos.empty:
-    # ATUALIZAÇÃO: Cria uma coluna tratada removendo espaços fantasmas e aplicando padrão Title Case
     df_colab['Nome_Formatado'] = df_colab['Nome Colaborador'].astype(str).str.strip().str.title()
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        # Exibe os nomes organizados em ordem alfabética e sem erros de digitação
         lista_nomes = sorted(df_colab['Nome_Formatado'].dropna().unique())
         nome_sel = st.selectbox("1. Selecione o Colaborador:", lista_nomes)
-        
-        # Filtra na planilha o colaborador selecionado utilizando a string higienizada
         dados_colab = df_colab[df_colab['Nome_Formatado'] == nome_sel].iloc[0]
         
     with col2:
@@ -260,8 +285,11 @@ if not df_colab.empty and not df_cargos.empty:
     c1, c2, c3 = st.columns(3)
     g_os, g_ficha, g_cert = c1.checkbox("OS", True), c2.checkbox("Ficha EPI", True), c3.checkbox("Certificado", True)
 
+    # Novo: Checkbox opcional para incluir ou não PDFs no Kit final
+    incluir_pdf = st.checkbox("📄 Incluir cópias em formato PDF no Kit", True)
+
     if st.button("🚀 PROCESSAR DOCUMENTOS"):
-        with st.spinner("Gerando documentos..."):
+        with st.spinner("Gerando documentos e PDFs..."):
             cargo = str(dados_colab['Cargo']).strip()
             arquivos = {}
             df_cargos['f_l'] = df_cargos['Função'].astype(str).apply(remover_acentos)
@@ -270,31 +298,49 @@ if not df_colab.empty and not df_cargos.empty:
             if not desc_f.empty:
                 desc_atv = desc_f['Descrição da Atividade'].values[0]
                 
-                # ATUALIZAÇÃO: Passamos o valor original "dados_colab['Nome Colaborador']" para os documentos
                 if g_os:
                     doc = Document(t_os)
                     substituir_docx(doc, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
                     b = io.BytesIO(); doc.save(b)
-                    arquivos[f"OS {nome_sel}.docx"] = b.getvalue()
+                    conteudo_docx = b.getvalue()
+                    nome_docx = f"OS {nome_sel}.docx"
+                    arquivos[nome_docx] = conteudo_docx
+                    
+                    # Gera a versão em PDF da OS se solicitado
+                    if incluir_pdf:
+                        pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
+                        if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
                 if g_ficha:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
                     if not df_e.empty:
                         m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{CENTRO_CUSTO}}": ""}
-                        arquivos[f"Ficha EPI {nome_sel}.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
+                        conteudo_xlsx = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
+                        nome_xlsx = f"Ficha EPI {nome_sel}.xlsx"
+                        arquivos[nome_xlsx] = conteudo_xlsx
+                        
+                        # Nota: Conversão automática de abas de tabelas dinâmicas amplas (xlsx) para PDF 
+                        # costuma quebrar margens e foi omitida por segurança do design da ficha.
 
                 if g_cert:
                     prs = Presentation(t_nr)
                     substituir_pptx(prs, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
                     b = io.BytesIO(); prs.save(b)
-                    arquivos[f"NR06 {nome_sel}.pptx"] = b.getvalue()
+                    conteudo_pptx = b.getvalue()
+                    nome_pptx = f"NR06 {nome_sel}.pptx"
+                    arquivos[nome_pptx] = conteudo_pptx
+                    
+                    # Gera a versão em PDF do Certificado se solicitado
+                    if incluir_pdf:
+                        pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_pptx, nome_pptx)
+                        if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
                 if arquivos:
                     z_b = io.BytesIO()
                     with zipfile.ZipFile(z_b, "w") as z:
                         for n, d in arquivos.items(): z.writestr(n, d)
-                    st.success("✅ Documentos prontos!")
+                    st.success("✅ Documentos e PDFs gerados com sucesso!")
                     st.download_button("📦 BAIXAR KIT COMPLETO (ZIP)", z_b.getvalue(), f"Kit_{nome_sel}.zip", use_container_width=True)
             else:
                 st.error(f"Cargo '{cargo}' não encontrado na aba Cargos.")
