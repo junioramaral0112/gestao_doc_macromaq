@@ -1,8 +1,3 @@
-Aqui está o código completo, 100% corrigido e pronto para rodar.
-
-Eu já ajustei os caminhos para apontarem para a pasta `assets/` (conforme a estrutura real do seu GitHub), adicionei a biblioteca `subprocess` para gerenciar a conversão, e incluí a lógica que gera e envelopa os arquivos **PDF** da OS e do Certificado dentro do ZIP de download.
-
-```python
 import streamlit as st
 import pandas as pd
 from docx import Document
