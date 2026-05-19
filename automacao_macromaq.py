@@ -7,7 +7,7 @@ import io
 import os
 import zipfile
 import unicodedata
-import subprocess  # Necessário para chamar o LibreOffice no servidor Linux
+import subprocess  # Adicionado para a conversão de PDF
 from datetime import datetime
 from urllib.parse import quote
 import base64
@@ -15,17 +15,17 @@ import base64
 # --- CONFIGURAÇÕES ---
 st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 
-# Diretório base da aplicação
+# Usar o diretório atual para facilitar o deploy no GitHub/Streamlit Cloud
 BASE_PATH = os.getcwd()
 
-# --- CAMINHOS DOS ARQUIVOS CORRIGIDOS (Apontando para a pasta assets) ---
-FUNDO_PATH = os.path.join(BASE_PATH, "assets", "fundo.png")
-LOGO_PATH = os.path.join(BASE_PATH, "assets", "logo.png")
-TEMPLATE_FICHA = os.path.join(BASE_PATH, "assets", "template_ficha.xlsx")
-TEMPLATE_OS_JUNIOR = os.path.join(BASE_PATH, "assets", "template_os_Junior.docx")
-TEMPLATE_NR06_JUNIOR = os.path.join(BASE_PATH, "assets", "template_nr06_Junior.pptx")
-TEMPLATE_OS_SIMONE = os.path.join(BASE_PATH, "assets", "template_os_simone.docx")
-TEMPLATE_NR06_SIMONE = os.path.join(BASE_PATH, "assets", "template_nr06_simone.pptx")
+# VOLTADO PARAO SEU PADRÃO ORIGINAL (Procurando na raiz do repositório)
+FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
+LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
+TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
+TEMPLATE_OS_JUNIOR = os.path.join(BASE_PATH, "template_os_Junior.docx")
+TEMPLATE_NR06_JUNIOR = os.path.join(BASE_PATH, "template_nr06_Junior.pptx")
+TEMPLATE_OS_SIMONE = os.path.join(BASE_PATH, "template_os_simone.docx")
+TEMPLATE_NR06_SIMONE = os.path.join(BASE_PATH, "template_nr06_simone.pptx")
 
 SHEET_ID = "1y98U3eK7JXJqQaMC0i7eFbwpvp97Nuyeml5Dis0UCUg"
 
@@ -163,15 +163,13 @@ def limpar_valor(valor):
     texto = str(valor).strip()
     return "" if texto.lower() in ["nan", "na"] else texto
 
-# --- FUNÇÃO DE CONVERSÃO PARA PDF (MÓDULO LINUX / STREAMLIT CLOUD) ---
+# Função para converter arquivos do Office para PDF usando o LibreOffice do Servidor
 def converter_para_pdf_linux(conteudo_arquivo, nome_original):
     try:
-        # Grava temporariamente o arquivo Office gerado na memória para o disco
         temp_input = os.path.join(BASE_PATH, nome_original)
         with open(temp_input, "wb") as f:
             f.write(conteudo_arquivo)
         
-        # Dispara o LibreOffice silencioso por linha de comando para fazer o bypass do PDF
         subprocess.run([
             'libreoffice', '--headless', '--convert-to', 'pdf', temp_input,
             '--outdir', BASE_PATH
@@ -184,12 +182,11 @@ def converter_para_pdf_linux(conteudo_arquivo, nome_original):
             with open(temp_pdf_path, "rb") as f:
                 pdf_bytes = f.read()
             
-            # Deleta os resíduos criados no servidor
             os.remove(temp_input)
             os.remove(temp_pdf_path)
             return pdf_bytes, nome_pdf
     except Exception as e:
-        st.warning(f"Aviso: Não foi possível converter '{nome_original}' para PDF. Verifique o seu arquivo packages.txt. Erro: {e}")
+        pass  # Se falhar a conversão do PDF, o app continua gerando os arquivos normais (.docx, .xlsx, .pptx)
     return None, None
 
 # --- PROCESSAMENTO DE DOCUMENTOS ---
@@ -211,7 +208,7 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
                 break
         if linha_tabela: break
         
-    if not linha_tabela: raise Exception("Tag {{ITEM}} não encontrada no template da Ficha.")
+    if not linha_tabela: raise Exception("Tag {{ITEM}} não encontrada.")
     
     for i in range(25):
         r = linha_tabela + i
@@ -284,11 +281,11 @@ if not df_colab.empty and not df_cargos.empty:
     c1, c2, c3 = st.columns(3)
     g_os, g_ficha, g_cert = c1.checkbox("OS", True), c2.checkbox("Ficha EPI", True), c3.checkbox("Certificado", True)
 
-    # Checkbox para controle do usuário se ele deseja injetar os PDFs no ZIP
-    incluir_pdf = st.checkbox("📄 Incluir as cópias em formato PDF no Kit", True)
+    # Caixa para decidir se quer embutir PDFs
+    incluir_pdf = st.checkbox("📄 Incluir cópias em formato PDF no Kit", True)
 
     if st.button("🚀 PROCESSAR DOCUMENTOS"):
-        with st.spinner("Gerando documentos e convertendo para PDF..."):
+        with st.spinner("Gerando documentos..."):
             cargo = str(dados_colab['Cargo']).strip()
             arquivos = {}
             df_cargos['f_l'] = df_cargos['Função'].astype(str).apply(remover_acentos)
@@ -297,7 +294,6 @@ if not df_colab.empty and not df_cargos.empty:
             if not desc_f.empty:
                 desc_atv = desc_f['Descrição da Atividade'].values[0]
                 
-                # Gerando a Ordem de Serviço
                 if g_os:
                     doc = Document(t_os)
                     substituir_docx(doc, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
@@ -308,20 +304,15 @@ if not df_colab.empty and not df_cargos.empty:
                     
                     if incluir_pdf:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
-                        if pdf_bytes: 
-                            arquivos[nome_pdf] = pdf_bytes
+                        if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # Gerando a Ficha de EPI
                 if g_ficha:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
                     if not df_e.empty:
                         m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{CENTRO_CUSTO}}": ""}
-                        conteudo_xlsx = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
-                        nome_xlsx = f"Ficha EPI {nome_sel}.xlsx"
-                        arquivos[nome_xlsx] = conteudo_xlsx
+                        arquivos[f"Ficha EPI {nome_sel}.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
 
-                # Gerando o Certificado NR06
                 if g_cert:
                     prs = Presentation(t_nr)
                     substituir_pptx(prs, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
@@ -332,18 +323,15 @@ if not df_colab.empty and not df_cargos.empty:
                     
                     if incluir_pdf:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_pptx, nome_pptx)
-                        if pdf_bytes: 
-                            arquivos[nome_pdf] = pdf_bytes
+                        if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # Se houver arquivos gerados, compacta tudo em ZIP
                 if arquivos:
                     z_b = io.BytesIO()
                     with zipfile.ZipFile(z_b, "w") as z:
-                        for n, d in arquivos.items(): 
-                            z.writestr(n, d)
-                    st.success("✅ Documentos e PDFs prontos!")
+                        for n, d in arquivos.items(): z.writestr(n, d)
+                    st.success("✅ Documentos prontos!")
                     st.download_button("📦 BAIXAR KIT COMPLETO (ZIP)", z_b.getvalue(), f"Kit_{nome_sel}.zip", use_container_width=True)
             else:
-                st.error(f"Cargo '{cargo}' não encontrado na aba Cargos. Verifique se há inconsistência no nome.")
+                st.error(f"Cargo '{cargo}' não encontrado na aba Cargos.")
 
 st.markdown("""<div class="footer">© 2026 Gestão Documentos | Desenvolvido por: Dilceu Junior</div>""", unsafe_allow_html=True)
