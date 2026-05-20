@@ -193,6 +193,24 @@ def converter_para_pdf_linux(conteudo_arquivo, nome_original):
 def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
     wb = openpyxl.load_workbook(caminho_template)
     ws = wb.active
+    
+    # --- BLOCO DE AJUSTE AUTOMÁTICO DE LAYOUT PARA PDF (CORREÇÃO DE DESCONFIGURAÇÃO) ---
+    ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    
+    # Ativa o modo de escala automático do openpyxl
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    # Força caber em 1 página de largura (fitToWidth) e estende o comprimento verticalmente (fitToHeight=0)
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0 
+    
+    # Define margens finas (em polegadas) para evitar cortes horizontais bizarros
+    ws.page_margins.left = 0.4
+    ws.page_margins.right = 0.4
+    ws.page_margins.top = 0.5
+    ws.page_margins.bottom = 0.5
+    # ----------------------------------------------------------------------------------
+
     for row in ws.iter_rows():
         for cell in row:
             if isinstance(cell.value, str):
@@ -294,7 +312,7 @@ if not df_colab.empty and not df_cargos.empty:
             if not desc_f.empty:
                 desc_atv = desc_f['Descrição da Atividade'].values[0]
                 
-                # 1. Processando Ordem de Serviço (DOCX -> PDF)
+                # 1. Ordem de Serviço (DOCX -> PDF)
                 if g_os:
                     doc = Document(t_os)
                     substituir_docx(doc, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
@@ -307,7 +325,7 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # 2. Processando Ficha de EPI (XLSX -> PDF) - ATUALIZADO
+                # 2. Ficha de EPI com correções de Escala (XLSX -> PDF)
                 if g_ficha:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
@@ -317,12 +335,11 @@ if not df_colab.empty and not df_cargos.empty:
                         nome_xlsx = f"Ficha EPI {nome_sel}.xlsx"
                         arquivos[nome_xlsx] = conteudo_xlsx
                         
-                        # Nova verificação: Converte a Planilha gerada para PDF
                         if incluir_pdf:
                             pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_xlsx, nome_xlsx)
                             if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # 3. Processando Certificado NR06 (PPTX -> PDF)
+                # 3. Certificado NR06 (PPTX -> PDF)
                 if g_cert:
                     prs = Presentation(t_nr)
                     substituir_pptx(prs, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
@@ -335,7 +352,6 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_pptx, nome_pptx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # Se houver arquivos gerados, compacta tudo em ZIP
                 if arquivos:
                     z_b = io.BytesIO()
                     with zipfile.ZipFile(z_b, "w") as z:
