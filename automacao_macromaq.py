@@ -18,7 +18,7 @@ st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 # Usar o diretório atual para facilitar o deploy no GitHub/Streamlit Cloud
 BASE_PATH = os.getcwd()
 
-# VOLTADO PARAO SEU PADRÃO ORIGINAL (Procurando na raiz do repositório)
+# Mantendo seu padrão original de caminhos na raiz do repositório
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
@@ -186,7 +186,7 @@ def converter_para_pdf_linux(conteudo_arquivo, nome_original):
             os.remove(temp_pdf_path)
             return pdf_bytes, nome_pdf
     except Exception as e:
-        pass  # Se falhar a conversão do PDF, o app continua gerando os arquivos normais (.docx, .xlsx, .pptx)
+        pass
     return None, None
 
 # --- PROCESSAMENTO DE DOCUMENTOS ---
@@ -294,6 +294,7 @@ if not df_colab.empty and not df_cargos.empty:
             if not desc_f.empty:
                 desc_atv = desc_f['Descrição da Atividade'].values[0]
                 
+                # 1. Processando Ordem de Serviço (DOCX -> PDF)
                 if g_os:
                     doc = Document(t_os)
                     substituir_docx(doc, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
@@ -306,13 +307,22 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
+                # 2. Processando Ficha de EPI (XLSX -> PDF) - ATUALIZADO
                 if g_ficha:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
                     if not df_e.empty:
                         m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{CENTRO_CUSTO}}": ""}
-                        arquivos[f"Ficha EPI {nome_sel}.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
+                        conteudo_xlsx = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
+                        nome_xlsx = f"Ficha EPI {nome_sel}.xlsx"
+                        arquivos[nome_xlsx] = conteudo_xlsx
+                        
+                        # Nova verificação: Converte a Planilha gerada para PDF
+                        if incluir_pdf:
+                            pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_xlsx, nome_xlsx)
+                            if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
+                # 3. Processando Certificado NR06 (PPTX -> PDF)
                 if g_cert:
                     prs = Presentation(t_nr)
                     substituir_pptx(prs, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
@@ -325,6 +335,7 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_pptx, nome_pptx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
+                # Se houver arquivos gerados, compacta tudo em ZIP
                 if arquivos:
                     z_b = io.BytesIO()
                     with zipfile.ZipFile(z_b, "w") as z:
