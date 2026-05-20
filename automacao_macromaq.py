@@ -18,7 +18,7 @@ st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 # Usar o diretório atual para facilitar o deploy no GitHub/Streamlit Cloud
 BASE_PATH = os.getcwd()
 
-# Mantendo seu padrão original de caminhos na raiz do repositório
+# VOLTADO PARAO SEU PADRÃO ORIGINAL (Procurando na raiz do repositório)
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
@@ -186,15 +186,13 @@ def converter_para_pdf_linux(conteudo_arquivo, nome_original):
             os.remove(temp_pdf_path)
             return pdf_bytes, nome_pdf
     except Exception as e:
-        pass
+        pass  # Se falhar a conversão do PDF, o app continua gerando os arquivos normais (.docx, .xlsx, .pptx)
     return None, None
 
 # --- PROCESSAMENTO DE DOCUMENTOS ---
 def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
     wb = openpyxl.load_workbook(caminho_template)
     ws = wb.active
-    
-    # Preenchimento dos dados do cabeçalho
     for row in ws.iter_rows():
         for cell in row:
             if isinstance(cell.value, str):
@@ -212,19 +210,18 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
         
     if not linha_tabela: raise Exception("Tag {{ITEM}} não encontrada.")
     
-    # CORREÇÃO CRUCIAL DE DESCONFIGURAÇÃO:
-    # Em vez de forçar 25 linhas estáticas (o que quebrava o layout de página do seu Excel), 
-    # o loop agora vai preencher dinamicamente apenas a quantidade real de EPIs que o colaborador possui.
-    qtd_items = len(df_epis)
-    for i in range(qtd_items):
+    for i in range(25):
         r = linha_tabela + i
-        item = df_epis.iloc[i]
-        ws.cell(row=r, column=1).value = f"{i+1:02d}"
-        ws.cell(row=r, column=2).value = limpar_valor(item.get('Descrição', ''))
-        ws.cell(row=r, column=5).value = limpar_valor(item.get('C.A.', ''))
-        ws.cell(row=r, column=6).value = limpar_valor(item.get('qt.', ''))
-        ws.cell(row=r, column=7).value = limpar_valor(item.get('unid.', ''))
-        ws.cell(row=r, column=8).value = datetime.now().strftime("%d/%m/%Y")
+        if i < len(df_epis):
+            item = df_epis.iloc[i]
+            ws.cell(row=r, column=1).value = f"{i+1:02d}"
+            ws.cell(row=r, column=2).value = limpar_valor(item.get('Descrição', ''))
+            ws.cell(row=r, column=5).value = limpar_valor(item.get('C.A.', ''))
+            ws.cell(row=r, column=6).value = limpar_valor(item.get('qt.', ''))
+            ws.cell(row=r, column=7).value = limpar_valor(item.get('unid.', ''))
+            ws.cell(row=r, column=8).value = datetime.now().strftime("%d/%m/%Y")
+        else:
+            for c in [1, 2, 5, 6, 7, 8]: ws.cell(row=r, column=c).value = ""
             
     output = io.BytesIO()
     wb.save(output)
@@ -297,7 +294,6 @@ if not df_colab.empty and not df_cargos.empty:
             if not desc_f.empty:
                 desc_atv = desc_f['Descrição da Atividade'].values[0]
                 
-                # 1. Ordem de Serviço (DOCX -> PDF)
                 if g_os:
                     doc = Document(t_os)
                     substituir_docx(doc, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
@@ -310,21 +306,13 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # 2. Ficha de EPI Dinâmica (XLSX -> PDF)
                 if g_ficha:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
                     if not df_e.empty:
                         m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{CENTRO_CUSTO}}": ""}
-                        conteudo_xlsx = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
-                        nome_xlsx = f"Ficha EPI {nome_sel}.xlsx"
-                        arquivos[nome_xlsx] = conteudo_xlsx
-                        
-                        if incluir_pdf:
-                            pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_xlsx, nome_xlsx)
-                            if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
+                        arquivos[f"Ficha EPI {nome_sel}.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
 
-                # 3. Certificado NR06 (PPTX -> PDF)
                 if g_cert:
                     prs = Presentation(t_nr)
                     substituir_pptx(prs, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
