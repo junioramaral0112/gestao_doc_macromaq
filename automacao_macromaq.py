@@ -137,6 +137,17 @@ def remover_acentos(texto):
     if not isinstance(texto, str): return str(texto)
     return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
 
+def limpar_espacos_texto(texto):
+    """Remove quebras de linha abruptas e múltiplos espaços que quebram o alinhamento do Word."""
+    if not isinstance(texto, str):
+        return ""
+    # Substitui quebras de linha por espaços para evitar blocos fantasmas divididos
+    texto_limpo = texto.replace("\n", " ").replace("\r", " ")
+    # Remove espaços duplos ou triplos gerados pela substituição
+    while "  " in texto_limpo:
+        texto_limpo = texto_limpo.replace("  ", " ")
+    return texto_limpo.strip()
+
 @st.cache_data(ttl=300)
 def carregar_aba(aba_nome):
     try:
@@ -186,7 +197,7 @@ def converter_para_pdf_linux(conteudo_arquivo, nome_original):
             os.remove(temp_pdf_path)
             return pdf_bytes, nome_pdf
     except Exception as e:
-        pass  # Se falhar a conversão do PDF, o app continua gerando os arquivos normais
+        pass  
     return None, None
 
 # --- PROCESSAMENTO DE DOCUMENTOS ---
@@ -228,38 +239,39 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
     return output.getvalue()
 
 def substituir_docx(doc, mapeamento):
-    """Substitui as tags nos parágrafos e tabelas preservando a fonte, cor e estilos originais."""
+    """Substitui as tags nos parágrafos e tabelas preservando os estilos originais e removendo vácuos."""
     # 1. Substituição nos parágrafos comuns
     for p in doc.paragraphs:
         for tag, valor in mapeamento.items():
             if tag in p.text:
+                val_limpo = limpar_espacos_texto(valor) if tag in ["{{RISCOS_AGENTES}}", "{{MEDIDAS_PROTECAO}}", "{{DESCRICAO_ATIVIDADE}}"] else str(valor)
                 if len(p.runs) > 0:
                     for run in p.runs:
                         if tag in run.text:
-                            run.text = run.text.replace(tag, str(valor))
+                            run.text = run.text.replace(tag, val_limpo)
                 else:
-                    p.text = p.text.replace(tag, str(valor))
+                    p.text = p.text.replace(tag, val_limpo)
 
-    # 2. Substituição rigorosa mantendo a formatação dentro de células de Tabelas
+    # 2. Substituição mantendo a formatação dentro de células de Tabelas
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for p in cell.paragraphs:
                     for tag, valor in mapeamento.items():
                         if tag in p.text:
+                            val_limpo = limpar_espacos_texto(valor) if tag in ["{{RISCOS_AGENTES}}", "{{MEDIDAS_PROTECAO}}", "{{DESCRICAO_ATIVIDADE}}"] else str(valor)
                             if len(p.runs) > 0:
                                 tag_encontrada_no_run = False
                                 for run in p.runs:
                                     if tag in run.text:
-                                        run.text = run.text.replace(tag, str(valor))
+                                        run.text = run.text.replace(tag, val_limpo)
                                         tag_encontrada_no_run = True
                                 
-                                # Fallback estrutural se a tag estiver cortada/espalhada entre os runs
+                                # Fallback estrutural se a tag estiver cortada entre runs
                                 if not tag_encontrada_no_run:
-                                    texto_completo = p.text.replace(tag, str(valor))
+                                    texto_completo = p.text.replace(tag, val_limpo)
                                     primeiro_run = p.runs[0]
                                     
-                                    # Memoriza as configurações originais do seu template
                                     guardar_negrito = primeiro_run.bold
                                     guardar_italico = primeiro_run.italic
                                     guardar_fonte = primeiro_run.font.name
@@ -274,7 +286,7 @@ def substituir_docx(doc, mapeamento):
                                     if guardar_tamanho: novo_run.font.size = guardar_tamanho
                                     if guardar_cor: novo_run.font.color.rgb = guardar_cor
                             else:
-                                p.text = p.text.replace(tag, str(valor))
+                                p.text = p.text.replace(tag, val_limpo)
 
 def substituir_pptx(prs, mapeamento):
     for slide in prs.slides:
@@ -330,19 +342,16 @@ if not df_colab.empty and not df_cargos.empty:
             desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
 
             if not desc_f.empty:
-                # Mapeado dinamicamente para ler a sua coluna correta "Descrição da Função"
                 desc_atv = desc_f['Descrição da Função'].values[0] if 'Descrição da Função' in desc_f.columns else ""
                 
                 texto_riscos = desc_f['Riscos e Agentes Existentes'].values[0] if 'Riscos e Agentes Existentes' in desc_f.columns else ""
                 texto_medidas = desc_f['Medidas de Proteção'].values[0] if 'Medidas de Proteção' in desc_f.columns else ""
                 
-                # Fallbacks técnicos de segurança
                 if pd.isna(texto_riscos) or str(texto_riscos).strip() == "":
                     texto_riscos = "Ergonômicos: Posturas incômodas ou pouco confortáveis por longos períodos (Trabalho sentado) – Reconhecido."
                 if pd.isna(texto_medidas) or str(texto_medidas).strip() == "":
                     texto_medidas = "Equipamentos de Proteção Individual (EPI's): Não aplicável (N/A) para a rotina de escritório administrativa padrão."
                 
-                # CORREÇÃO DA BUSCA DE SETOR: Varre de forma inteligente os nomes de coluna mais prováveis
                 setor_real = ""
                 for col_nome in ['Setor', 'NomeLocal', 'Nome Setor', 'Departamento']:
                     if col_nome in dados_colab.index and not pd.isna(dados_colab[col_nome]):
