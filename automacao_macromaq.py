@@ -18,7 +18,7 @@ st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 # Usar o diretório atual para facilitar o deploy no GitHub/Streamlit Cloud
 BASE_PATH = os.getcwd()
 
-# VOLTADO PARAO SEU PADRÃO ORIGINAL (Procurando na raiz do repositório)
+# VOLTADO PARA O SEU PADRÃO ORIGINAL (Procurando na raiz do repositório)
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
@@ -292,11 +292,36 @@ if not df_colab.empty and not df_cargos.empty:
             desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
 
             if not desc_f.empty:
-                desc_atv = desc_f['Descrição da Atividade'].values[0]
+                # Mantém sua leitura original da atividade
+                desc_atv = desc_f['Descrição da Atividade'].values[0] if 'Descrição da Atividade' in desc_f.columns else ""
+                
+                # NOVO: Puxa os dados textuais diretamente das novas colunas que você criou
+                texto_riscos = desc_f['Riscos e Agentes Existentes'].values[0] if 'Riscos e Agentes Existentes' in desc_f.columns else ""
+                texto_medidas = desc_f['Medidas de Proteção'].values[0] if 'Medidas de Proteção' in desc_f.columns else ""
+                
+                # Fallback de segurança caso a célula na planilha esteja em branco
+                if pd.isna(texto_riscos) or str(texto_riscos).strip() == "":
+                    texto_riscos = "Ergonômicos: Posturas incômodas ou pouco confortáveis por longos períodos (Trabalho sentado) – Reconhecido."
+                if pd.isna(texto_medidas) or str(texto_medidas).strip() == "":
+                    texto_medidas = "Equipamentos de Proteção Individual (EPI's): Não aplicável (N/A) para a rotina de escritório administrativa padrão."
                 
                 if g_os:
                     doc = Document(t_os)
-                    substituir_docx(doc, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
+                    
+                    # Dicionário expandido incluindo as duas novas marcações dinâmicas
+                    mapeamento_os = {
+                        "{{NOME}}": dados_colab['Nome Colaborador'], 
+                        "{{FUNCAO}}": cargo.upper(), 
+                        "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], 
+                        "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], 
+                        "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), 
+                        "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), 
+                        "{{DATA}}": datetime.now().strftime("%d/%m/%Y"),
+                        "{{RISCOS_AGENTES}}": str(texto_riscos),   # Tag injetada
+                        "{{MEDIDAS_PROTECAO}}": str(texto_medidas)  # Tag injetada
+                    }
+                    
+                    substituir_docx(doc, mapeamento_os)
                     b = io.BytesIO(); doc.save(b)
                     conteudo_docx = b.getvalue()
                     nome_docx = f"OS {nome_sel}.docx"
