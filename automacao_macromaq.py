@@ -215,7 +215,7 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
             if cell.value and "{{ITEM}}" in str(cell.value):
                 linha_tabela = cell.row
                 break
-        if linha_tabela: break
+        if línea_tabela: break
         
     if not linha_tabela: raise Exception("Tag {{ITEM}} não encontrada.")
     
@@ -242,13 +242,13 @@ def substituir_docx(doc, mapeamento):
     for p in doc.paragraphs:
         for tag, valor in mapeamento.items():
             if tag in p.text:
-                val_limpo = limpar_espacos_texto(valor) if tag in ["{{RISCOS_AGENTES}}", "{{MEDIDAS_PROTECAO}}", "{{DESCRICAO_ATIVIDADE}}"] else str(valor)
+                val_processado = limpar_espacos_texto(valor) if tag in ["{{RISCOS_AGENTES}}", "{{MEDIDAS_PROTECAO}}", "{{DESCRICAO_ATIVIDADE}}"] else str(valor)
                 if len(p.runs) > 0:
                     for run in p.runs:
                         if tag in run.text:
-                            run.text = run.text.replace(tag, val_limpo)
+                            run.text = run.text.replace(tag, val_processado)
                 else:
-                    p.text = p.text.replace(tag, val_limpo)
+                    p.text = p.text.replace(tag, val_processado)
 
     # 2. Substituição mantendo a formatação dentro de células de Tabelas
     for table in doc.tables:
@@ -257,17 +257,17 @@ def substituir_docx(doc, mapeamento):
                 for p in cell.paragraphs:
                     for tag, valor in mapeamento.items():
                         if tag in p.text:
-                            val_limpo = limpar_espacos_texto(valor) if tag in ["{{RISCOS_AGENTES}}", "{{MEDIDAS_PROTECAO}}", "{{DESCRICAO_ATIVIDADE}}"] else str(valor)
+                            val_processado = limpar_espacos_texto(valor) if tag in ["{{RISCOS_AGENTES}}", "{{MEDIDAS_PROTECAO}}", "{{DESCRICAO_ATIVIDADE}}"] else str(valor)
                             if len(p.runs) > 0:
                                 tag_encontrada_no_run = False
                                 for run in p.runs:
                                     if tag in run.text:
-                                        run.text = run.text.replace(tag, val_limpo)
+                                        run.text = run.text.replace(tag, val_processado)
                                         tag_encontrada_no_run = True
                                 
                                 # Fallback estrutural se a tag estiver cortada entre runs
                                 if not tag_encontrada_no_run:
-                                    texto_completo = p.text.replace(tag, val_limpo)
+                                    texto_completo = p.text.replace(tag, val_processado)
                                     primeiro_run = p.runs[0]
                                     
                                     guardar_negrito = primeiro_run.bold
@@ -284,7 +284,7 @@ def substituir_docx(doc, mapeamento):
                                     if guardar_tamanho: novo_run.font.size = guardar_tamanho
                                     if guardar_cor: novo_run.font.color.rgb = guardar_cor
                             else:
-                                p.text = p.text.replace(tag, val_limpo)
+                                p.text = p.text.replace(tag, val_processado)
 
 def substituir_pptx(prs, mapeamento):
     for slide in prs.slides:
@@ -321,94 +321,3 @@ if not df_colab.empty and not df_cargos.empty:
         unid_sel = st.selectbox("2. Unidade para OS:", lista_unid, index=idx)
     with col3:
         tecnico_sel = st.selectbox("3. Técnico Responsável:", ["Técnico Junior", "Técnica Simone"])
-
-    t_os = TEMPLATE_OS_JUNIOR if tecnico_sel == "Técnico Junior" else TEMPLATE_OS_SIMONE
-    t_nr = TEMPLATE_NR06_JUNIOR if tecnico_sel == "Técnico Junior" else TEMPLATE_NR06_SIMONE
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    g_os, g_ficha, g_cert = c1.checkbox("OS", True), c2.checkbox("Ficha EPI", True), c3.checkbox("Certificado", True)
-
-    # Caixa para decidir se quer embutir PDFs
-    incluir_pdf = st.checkbox("📄 Incluir cópias em formato PDF no Kit", True)
-
-    if st.button("🚀 PROCESSAR DOCUMENTOS"):
-        with st.spinner("Gerando documentos..."):
-            cargo = str(dados_colab['Cargo']).strip()
-            arquivos = {}
-            df_cargos['f_l'] = df_cargos['Função'].astype(str).apply(remover_acentos)
-            desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
-
-            if not desc_f.empty:
-                desc_atv = desc_f['Descrição da Função'].values[0] if 'Descrição da Função' in desc_f.columns else ""
-                
-                texto_riscos = desc_f['Riscos e Agentes Existentes'].values[0] if 'Riscos e Agentes Existentes' in desc_f.columns else ""
-                texto_medidas = desc_f['Medidas de Proteção'].values[0] if 'Medidas de Proteção' in desc_f.columns else ""
-                
-                if pd.isna(texto_riscos) or str(texto_riscos).strip() == "":
-                    texto_riscos = "Ergonômicos: Posturas incômodas ou pouco confortáveis por longos períodos (Trabalho sentado) – Reconhecido."
-                if pd.isna(texto_medidas) or str(texto_medidas).strip() == "":
-                    texto_medidas = "Equipamentos de Proteção Individual (EPI's): Não aplicável (N/A) para a rotina de escritório administrativa padrão."
-                
-                setor_real = ""
-                for col_nome in ['Setor', 'NomeLocal', 'Nome Setor', 'Departamento']:
-                    if col_nome in dados_colab.index and not pd.isna(dados_colab[col_nome]):
-                        setor_real = str(dados_colab[col_nome]).strip()
-                        break
-                if not setor_real or setor_real.lower() in ['nan', '']:
-                    setor_real = "Setor Operacional"
-
-                if g_os:
-                    doc = Document(t_os)
-                    
-                    mapeamento_os = {
-                        "{{NOME}}": dados_colab['Nome Colaborador'], 
-                        "{{FUNCAO}}": cargo.upper(), 
-                        "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], 
-                        "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], 
-                        "{{SETOR}}": setor_real, 
-                        "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), 
-                        "{{DATA}}": datetime.now().strftime("%d/%m/%Y"),
-                        "{{RISCOS_AGENTES}}": str(texto_riscos),   
-                        "{{MEDIDAS_PROTECAO}}": str(texto_medidas)  
-                    }
-                    
-                    substituir_docx(doc, mapeamento_os)
-                    b = io.BytesIO(); doc.save(b)
-                    conteudo_docx = b.getvalue()
-                    nome_docx = f"OS {nome_sel}.docx"
-                    arquivos[nome_docx] = conteudo_docx
-                    
-                    if incluir_pdf:
-                        pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
-                        if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
-
-                if g_ficha:
-                    df_e = carregar_aba(cargo)
-                    if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
-                    if not df_e.empty:
-                        m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": setor_real, "{{CENTRO_CUSTO}}": ""}
-                        arquivos[f"Ficha EPI {nome_sel}.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
-
-                if g_cert:
-                    prs = Presentation(t_nr)
-                    substituir_pptx(prs, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
-                    b = io.BytesIO(); prs.save(b)
-                    conteudo_pptx = b.getvalue()
-                    nome_pptx = f"NR06 {nome_sel}.pptx"
-                    arquivos[nome_pptx] = conteudo_pptx
-                    
-                    if incluir_pdf:
-                        pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_pptx, nome_pptx)
-                        if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
-
-                if arquivos:
-                    z_b = io.BytesIO()
-                    with zipfile.ZipFile(z_b, "w") as z:
-                        for n, d in arquivos.items(): z.writestr(n, d)
-                    st.success("✅ Documentos prontos!")
-                    st.download_button("📦 BAIXAR KIT COMPLETO (ZIP)", z_b.getvalue(), f"Kit_{nome_sel}.zip", use_container_width=True)
-            else:
-                st.error(f"Cargo '{cargo}' não encontrado na aba Cargos.")
-
-st.markdown("""<div class="footer">© 2026 Gestão Documentos | Desenvolvido por: Dilceu Junior</div>""", unsafe_allow_html=True)
