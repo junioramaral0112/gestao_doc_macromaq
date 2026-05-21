@@ -18,7 +18,7 @@ st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 # Usar o diretório atual para facilitar o deploy no GitHub/Streamlit Cloud
 BASE_PATH = os.getcwd()
 
-# VOLTADO PARA O SEU PADRÃO ORIGINAL (Procurando na raiz do repositório)
+# Caminhos dos arquivos na raiz do repositório
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
@@ -186,7 +186,7 @@ def converter_para_pdf_linux(conteudo_arquivo, nome_original):
             os.remove(temp_pdf_path)
             return pdf_bytes, nome_pdf
     except Exception as e:
-        pass  # Se falhar a conversão do PDF, o app continua gerando os arquivos normais (.docx, .xlsx, .pptx)
+        pass  # Se falhar a conversão do PDF, o app continua gerando os arquivos normais
     return None, None
 
 # --- PROCESSAMENTO DE DOCUMENTOS ---
@@ -228,15 +228,53 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
     return output.getvalue()
 
 def substituir_docx(doc, mapeamento):
+    """Substitui as tags nos parágrafos e tabelas preservando a fonte, cor e estilos originais."""
+    # 1. Substituição nos parágrafos comuns
     for p in doc.paragraphs:
         for tag, valor in mapeamento.items():
-            if tag in p.text: p.text = p.text.replace(tag, str(valor))
+            if tag in p.text:
+                if len(p.runs) > 0:
+                    for run in p.runs:
+                        if tag in run.text:
+                            run.text = run.text.replace(tag, str(valor))
+                else:
+                    p.text = p.text.replace(tag, str(valor))
+
+    # 2. Substituição rigorosa mantendo a formatação dentro de células de Tabelas
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for p in cell.paragraphs:
                     for tag, valor in mapeamento.items():
-                        if tag in p.text: p.text = p.text.replace(tag, str(valor))
+                        if tag in p.text:
+                            if len(p.runs) > 0:
+                                tag_encontrada_no_run = False
+                                for run in p.runs:
+                                    if tag in run.text:
+                                        run.text = run.text.replace(tag, str(valor))
+                                        tag_encontrada_no_run = True
+                                
+                                # Fallback estrutural se a tag estiver cortada/espalhada entre os runs
+                                if not tag_encontrada_no_run:
+                                    texto_completo = p.text.replace(tag, str(valor))
+                                    primeiro_run = p.runs[0]
+                                    
+                                    # Memoriza as configurações originais do seu template
+                                    guardar_negrito = primeiro_run.bold
+                                    guardar_italico = primeiro_run.italic
+                                    guardar_fonte = primeiro_run.font.name
+                                    guardar_tamanho = primeiro_run.font.size
+                                    guardar_cor = primeiro_run.font.color.rgb if primeiro_run.font.color else None
+                                    
+                                    p.text = ""
+                                    novo_run = p.add_run(texto_completo)
+                                    novo_run.bold = guardar_negrito
+                                    novo_run.italic = guardar_italico
+                                    if guardar_fonte: novo_run.font.name = guardar_fonte
+                                    if guardar_tamanho: novo_run.font.size = guardar_tamanho
+                                    if guardar_cor: novo_run.font.color.rgb = guardar_cor
+                            else:
+                                p.text = p.text.replace(tag, str(valor))
 
 def substituir_pptx(prs, mapeamento):
     for slide in prs.slides:
@@ -292,34 +330,36 @@ if not df_colab.empty and not df_cargos.empty:
             desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
 
             if not desc_f.empty:
+                # Mapeado dinamicamente para ler a sua coluna correta "Descrição da Função"
                 desc_atv = desc_f['Descrição da Função'].values[0] if 'Descrição da Função' in desc_f.columns else ""
                 
                 texto_riscos = desc_f['Riscos e Agentes Existentes'].values[0] if 'Riscos e Agentes Existentes' in desc_f.columns else ""
                 texto_medidas = desc_f['Medidas de Proteção'].values[0] if 'Medidas de Proteção' in desc_f.columns else ""
                 
+                # Fallbacks técnicos de segurança
                 if pd.isna(texto_riscos) or str(texto_riscos).strip() == "":
                     texto_riscos = "Ergonômicos: Posturas incômodas ou pouco confortáveis por longos períodos (Trabalho sentado) – Reconhecido."
                 if pd.isna(texto_medidas) or str(texto_medidas).strip() == "":
                     texto_medidas = "Equipamentos de Proteção Individual (EPI's): Não aplicável (N/A) para a rotina de escritório administrativa padrão."
                 
+                # CORREÇÃO DA BUSCA DE SETOR: Varre de forma inteligente os nomes de coluna mais prováveis
+                setor_real = ""
+                for col_nome in ['Setor', 'NomeLocal', 'Nome Setor', 'Departamento']:
+                    if col_nome in dados_colab.index and not pd.isna(dados_colab[col_nome]):
+                        setor_real = str(dados_colab[col_nome]).strip()
+                        break
+                if not setor_real or setor_real.lower() in ['nan', '']:
+                    setor_real = "Setor Operacional"
+
                 if g_os:
                     doc = Document(t_os)
-                    
-                    # CORREÇÃO INTELIGENTE DO SETOR: Varre as colunas possíveis na planilha de colaboradores
-                    setor_real = ""
-                    for col_nome in ['Setor', 'NomeLocal', 'Nome Setor', 'Departamento']:
-                        if col_nome in dados_colab.index and not pd.isna(dados_colab[col_nome]):
-                            setor_real = str(dados_colab[col_nome]).strip()
-                            break
-                    if not setor_real or setor_real.lower() in ['nan', '']:
-                        setor_real = "Setor Operacional"
                     
                     mapeamento_os = {
                         "{{NOME}}": dados_colab['Nome Colaborador'], 
                         "{{FUNCAO}}": cargo.upper(), 
                         "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], 
                         "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], 
-                        "{{SETOR}}": setor_real, # Correção aplicada aqui para preencher o Setor
+                        "{{SETOR}}": setor_real, 
                         "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), 
                         "{{DATA}}": datetime.now().strftime("%d/%m/%Y"),
                         "{{RISCOS_AGENTES}}": str(texto_riscos),   
@@ -340,8 +380,7 @@ if not df_colab.empty and not df_cargos.empty:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
                     if not df_e.empty:
-                        setor_ficha = setor_real if 'setor_real' in locals() else str(dados_colab.get('NomeLocal', ''))
-                        m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": setor_ficha, "{{CENTRO_CUSTO}}": ""}
+                        m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": setor_real, "{{CENTRO_CUSTO}}": ""}
                         arquivos[f"Ficha EPI {nome_sel}.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
 
                 if g_cert:
