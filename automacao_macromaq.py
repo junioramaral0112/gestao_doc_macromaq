@@ -141,9 +141,7 @@ def limpar_espacos_texto(texto):
     """Remove quebras de linha abruptas e múltiplos espaços que quebram o alinhamento do Word."""
     if not isinstance(texto, str):
         return ""
-    # Substitui quebras de linha por espaços para evitar blocos fantasmas divididos
     texto_limpo = texto.replace("\n", " ").replace("\r", " ")
-    # Remove espaços duplos ou triplos gerados pela substituição
     while "  " in texto_limpo:
         texto_limpo = texto_limpo.replace("  ", " ")
     return texto_limpo.strip()
