@@ -236,19 +236,47 @@ def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
     wb.save(output)
     return output.getvalue()
 
+def processar_paragrafo_com_runs(p, tag, valor):
+    """Substitui a tag dentro de um parágrafo reconstruindo o texto para não quebrar estilos do Word."""
+    if tag in p.text:
+        # Se a tag está inteira dentro de um único run (caso ideal)
+        tag_substituida = False
+        for run in p.runs:
+            if tag in run.text:
+                run.text = run.text.replace(tag, valor)
+                tag_substituida = True
+        
+        # Se o Word fragmentou a tag (ex: '{' em um run, '{FUNCAO}' em outro)
+        if not tag_substituida and len(p.runs) > 0:
+            texto_completo = p.text.replace(tag, valor)
+            primeiro_run = p.runs[0]
+            
+            # Copia a formatação original exata
+            guardar_negrito = primeiro_run.bold
+            guardar_italico = primeiro_run.italic
+            guardar_fonte = primeiro_run.font.name
+            guardar_tamanho = primeiro_run.font.size
+            guardar_cor = primeiro_run.font.color.rgb if primeiro_run.font.color else None
+            
+            # Limpa os fragmentos e injeta o texto com o layout preservado
+            p.text = ""
+            novo_run = p.add_run(texto_completo)
+            novo_run.bold = guardar_negrito
+            novo_run.italic = guardar_italico
+            if guardar_fonte: novo_run.font.name = guardar_fonte
+            if guardar_tamanho: novo_run.font.size = guardar_tamanho
+            if guardar_cor: novo_run.font.color.rgb = guardar_cor
+
 def substituir_docx(doc, mapeamento):
-    """Substitui as tags nos parágrafos e tabelas preservando os estilos originais e removendo vácuos."""
+    """Varre parágrafos comuns e tabelas aplicando a substituição segura por runs."""
+    # 1. Substituição nos parágrafos comuns do corpo do texto
     for p in doc.paragraphs:
         for tag, valor in mapeamento.items():
             if tag in p.text:
                 val_processado = limpar_espacos_texto(valor) if tag in ["{{RISCOS_AGENTES}}", "{{MEDIDAS_PROTECAO}}", "{{DESCRICAO_ATIVIDADE}}"] else str(valor)
-                if len(p.runs) > 0:
-                    for run in p.runs:
-                        if tag in run.text:
-                            run.text = run.text.replace(tag, val_processado)
-                else:
-                    p.text = p.text.replace(tag, val_processado)
+                processar_paragrafo_com_runs(p, tag, val_processado)
 
+    # 2. Substituição rigorosa e segura dentro de células de Tabelas
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
@@ -256,32 +284,7 @@ def substituir_docx(doc, mapeamento):
                     for tag, valor in mapeamento.items():
                         if tag in p.text:
                             val_processado = limpar_espacos_texto(valor) if tag in ["{{RISCOS_AGENTES}}", "{{MEDIDAS_PROTECAO}}", "{{DESCRICAO_ATIVIDADE}}"] else str(valor)
-                            if len(p.runs) > 0:
-                                tag_encontrada_no_run = False
-                                for run in p.runs:
-                                    if tag in run.text:
-                                        run.text = run.text.replace(tag, val_processado)
-                                        tag_encontrada_no_run = True
-                                
-                                if not tag_encontrada_no_run:
-                                    texto_completo = p.text.replace(tag, val_processado)
-                                    primeiro_run = p.runs[0]
-                                    
-                                    guardar_negrito = primeiro_run.bold
-                                    guardar_italico = primeiro_run.italic
-                                    guardar_fonte = primeiro_run.font.name
-                                    guardar_tamanho = primeiro_run.font.size
-                                    guardar_cor = primeiro_run.font.color.rgb if primeiro_run.font.color else None
-                                    
-                                    p.text = ""
-                                    novo_run = p.add_run(texto_completo)
-                                    novo_run.bold = guardar_negrito
-                                    novo_run.italic = guardar_italico
-                                    if guardar_fonte: novo_run.font.name = guardar_fonte
-                                    if guardar_tamanho: novo_run.font.size = guardar_tamanho
-                                    if guardar_cor: novo_run.font.color.rgb = guardar_cor
-                            else:
-                                p.text = p.text.replace(tag, val_processado)
+                            processar_paragrafo_com_runs(p, tag, val_processado)
 
 def substituir_pptx(prs, mapeamento):
     for slide in prs.slides:
@@ -324,7 +327,6 @@ if not df_colab.empty and not df_cargos.empty:
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # GARANTIA VISUAL: Os checkboxes e painéis ficam fora do bloco condicional de erro para nunca sumirem da tela
     c1, c2, c3 = st.columns(3)
     g_os, g_ficha, g_cert = c1.checkbox("OS", True), c2.checkbox("Ficha EPI", True), c3.checkbox("Certificado", True)
     incluir_pdf = st.checkbox("📄 Incluir cópias em formato PDF no Kit", True)
@@ -337,7 +339,6 @@ if not df_colab.empty and not df_cargos.empty:
             desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
 
             if not desc_f.empty:
-                # Verificação inteligente: Lê "Descrição da Função" ou o nome antigo "Descrição da Atividade" caso existam variações
                 if 'Descrição da Função' in desc_f.columns:
                     desc_atv = desc_f['Descrição da Função'].values[0]
                 elif 'Descrição da Atividade' in desc_f.columns:
@@ -364,6 +365,7 @@ if not df_colab.empty and not df_cargos.empty:
                 if g_os:
                     doc = Document(t_os)
                     
+                    # MAPEAMENTO: Enviando as duas variações de chaves (com e sem acento) para blindagem completa do template
                     mapeamento_os = {
                         "{{NOME}}": dados_colab['Nome Colaborador'], 
                         "{{FUNCAO}}": cargo.upper(), 
