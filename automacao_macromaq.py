@@ -292,14 +292,11 @@ if not df_colab.empty and not df_cargos.empty:
             desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
 
             if not desc_f.empty:
-                # Mantém sua leitura original da atividade
-                desc_atv = desc_f['Descrição da Atividade'].values[0] if 'Descrição da Atividade' in desc_f.columns else ""
+                desc_atv = desc_f['Descrição da Função'].values[0] if 'Descrição da Função' in desc_f.columns else ""
                 
-                # NOVO: Puxa os dados textuais diretamente das novas colunas que você criou
                 texto_riscos = desc_f['Riscos e Agentes Existentes'].values[0] if 'Riscos e Agentes Existentes' in desc_f.columns else ""
                 texto_medidas = desc_f['Medidas de Proteção'].values[0] if 'Medidas de Proteção' in desc_f.columns else ""
                 
-                # Fallback de segurança caso a célula na planilha esteja em branco
                 if pd.isna(texto_riscos) or str(texto_riscos).strip() == "":
                     texto_riscos = "Ergonômicos: Posturas incômodas ou pouco confortáveis por longos períodos (Trabalho sentado) – Reconhecido."
                 if pd.isna(texto_medidas) or str(texto_medidas).strip() == "":
@@ -308,17 +305,25 @@ if not df_colab.empty and not df_cargos.empty:
                 if g_os:
                     doc = Document(t_os)
                     
-                    # Dicionário expandido incluindo as duas novas marcações dinâmicas
+                    # CORREÇÃO INTELIGENTE DO SETOR: Varre as colunas possíveis na planilha de colaboradores
+                    setor_real = ""
+                    for col_nome in ['Setor', 'NomeLocal', 'Nome Setor', 'Departamento']:
+                        if col_nome in dados_colab.index and not pd.isna(dados_colab[col_nome]):
+                            setor_real = str(dados_colab[col_nome]).strip()
+                            break
+                    if not setor_real or setor_real.lower() in ['nan', '']:
+                        setor_real = "Setor Operacional"
+                    
                     mapeamento_os = {
                         "{{NOME}}": dados_colab['Nome Colaborador'], 
                         "{{FUNCAO}}": cargo.upper(), 
                         "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], 
                         "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], 
-                        "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), 
+                        "{{SETOR}}": setor_real, # Correção aplicada aqui para preencher o Setor
                         "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), 
                         "{{DATA}}": datetime.now().strftime("%d/%m/%Y"),
-                        "{{RISCOS_AGENTES}}": str(texto_riscos),   # Tag injetada
-                        "{{MEDIDAS_PROTECAO}}": str(texto_medidas)  # Tag injetada
+                        "{{RISCOS_AGENTES}}": str(texto_riscos),   
+                        "{{MEDIDAS_PROTECAO}}": str(texto_medidas)  
                     }
                     
                     substituir_docx(doc, mapeamento_os)
@@ -335,7 +340,8 @@ if not df_colab.empty and not df_cargos.empty:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
                     if not df_e.empty:
-                        m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{CENTRO_CUSTO}}": ""}
+                        setor_ficha = setor_real if 'setor_real' in locals() else str(dados_colab.get('NomeLocal', ''))
+                        m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": setor_ficha, "{{CENTRO_CUSTO}}": ""}
                         arquivos[f"Ficha EPI {nome_sel}.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
 
                 if g_cert:
