@@ -7,6 +7,7 @@ import os
 import zipfile
 import unicodedata
 import subprocess  # Adicionado para a conversão de PDF
+import copy        # Importado para clonar as propriedades da linha da tabela
 from datetime import datetime
 from urllib.parse import quote
 import base64
@@ -20,7 +21,7 @@ BASE_PATH = os.getcwd()
 # Mantendo seu padrão original de caminhos na raiz do repositório
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
-TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.docx")  # ALTERADO PARA DOCX
+TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.docx")
 TEMPLATE_OS_JUNIOR = os.path.join(BASE_PATH, "template_os_Junior.docx")
 TEMPLATE_NR06_JUNIOR = os.path.join(BASE_PATH, "template_nr06_Junior.pptx")
 TEMPLATE_OS_SIMONE = os.path.join(BASE_PATH, "template_os_simone.docx")
@@ -209,38 +210,56 @@ def substituir_pptx(prs, mapeamento):
                         for tag, valor in mapeamento.items():
                             if tag in run.text: run.text = run.text.replace(tag, str(valor))
 
+# NOVA LÓGICA: Preenche as linhas clonando a formatação original perfeitamente para cada item
 def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
     doc = Document(caminho_template)
     
-    # Preenche o cabeçalho usando o mapeamento padrão
+    # 1. Substitui os dados do topo (Nome, Matrícula, etc.)
     substituir_docx(doc, mapeamento)
     
-    # Procura as tags dinâmicas de itens na tabela do Word de forma posicional
-    qtd_items = len(df_epis)
+    # 2. Localiza a tabela de EPIs que contém a tag {{ITEM}}
+    tabela_alvo = None
+    linha_modelo = None
     
-    # Mapeamento dinâmico para até 25 linhas com base nas tags criadas no Word
-    mapeamento_tabela = {}
-    for i in range(25):
-        num_item = f"{i+1:02d}"
-        if i < qtd_items:
-            item = df_epis.iloc[i]
-            mapeamento_tabela[f"{{{{ITEM_{num_item}}}}}"] = num_item
-            mapeamento_tabela[f"{{{{DESC_{num_item}}}}}"] = limpar_valor(item.get('Descrição', ''))
-            mapeamento_tabela[f"{{{{CA_{num_item}}}}}"] = limpar_valor(item.get('C.A.', ''))
-            mapeamento_tabela[f"{{{{QT_{num_item}}}}}"] = limpar_valor(item.get('qt.', ''))
-            mapeamento_tabela[f"{{{{UN_{num_item}}}}}"] = limpar_valor(item.get('unid.', ''))
-            mapeamento_tabela[f"{{{{DT_{num_item}}}}}"] = datetime.now().strftime("%d/%m/%Y")
-        else:
-            # Limpa as tags caso o funcionário tenha menos que 25 EPIs
-            mapeamento_tabela[f"{{{{ITEM_{num_item}}}}}"] = ""
-            mapeamento_tabela[f"{{{{DESC_{num_item}}}}}"] = ""
-            mapeamento_tabela[f"{{{{CA_{num_item}}}}}"] = ""
-            mapeamento_tabela[f"{{{{QT_{num_item}}}}}"] = ""
-            mapeamento_tabela[f"{{{{UN_{num_item}}}}}"] = ""
-            mapeamento_tabela[f"{{{{DT_{num_item}}}}}"] = ""
+    for tabela in doc.tables:
+        for row in tabela.rows:
+            for cell in row.cells:
+                if "{{ITEM}}" in cell.text:
+                    tabela_alvo = tabela
+                    linha_modelo = row
+                    break
+            if tabela_alvo: break
+        if tabela_alvo: break
+        
+    if not tabela_alvo or not linha_modelo:
+        raise Exception("A linha contendo as tags {{ITEM}}, {{DESC}}, etc. não foi encontrada no template do Word.")
+    
+    # Guarda uma referência do elemento XML da linha modelo para clonagem limpa
+    tr_modelo = linha_modelo._tr
+    
+    # Percorre os itens da planilha de EPIs
+    for idx, item in df_epis.iterrows():
+        num_seq = f"{idx + 1:02d}"
+        
+        # Cria uma nova linha idêntica copiando os estilos da linha modelo
+        nova_tr = copy.deepcopy(tr_modelo)
+        nova_linha = tabela_alvo.add_row()
+        nova_linha._tr.getparent().replace(nova_linha._tr, nova_tr)
+        nova_linha._tr = nova_tr
+        
+        # Preenche os dados célula por célula da nova linha gerada
+        for cell in nova_linha.cells:
+            if "{{ITEM}}" in cell.text: cell.text = cell.text.replace("{{ITEM}}", num_seq)
+            if "{{DESC}}" in cell.text: cell.text = cell.text.replace("{{DESC}}", limpar_valor(item.get('Descrição', '')))
+            if "{{CA}}" in cell.text: cell.text = cell.text.replace("{{CA}}", limpar_valor(item.get('C.A.', '')))
+            if "{{QT}}" in cell.text: cell.text = cell.text.replace("{{QT}}", limpar_valor(item.get('qt.', '')))
+            if "unid" in cell.text: cell.text = cell.text.replace("unid", limpar_valor(item.get('unid.', 'unid')))
+            if "{{DATA}}" in cell.text: cell.text = cell.text.replace("{{DATA}}", datetime.now().strftime("%d/%m/%Y"))
             
-    substituir_docx(doc, mapeamento_tabela)
-    
+    # Remove a linha modelo original com os colchetes textuais vazios que serviu de molde
+    parent = tr_modelo.getparent()
+    parent.remove(tr_modelo)
+            
     output = io.BytesIO()
     doc.save(output)
     return output.getvalue()
@@ -305,7 +324,7 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # 2. Ficha de EPI (DOCX -> PDF) - NOVA IMPLEMENTAÇÃO INFALÍVEL
+                # 2. Ficha de EPI Automatizada (DOCX -> PDF)
                 if g_ficha:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
