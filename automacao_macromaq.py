@@ -7,7 +7,7 @@ import os
 import zipfile
 import unicodedata
 import subprocess  # Adicionado para a conversão de PDF
-import copy        # Importado para clonar as propriedades da linha da tabela
+import copy        # Importado para clonar as propriedades da linha se necessário
 from datetime import datetime
 from urllib.parse import quote
 import base64
@@ -210,55 +210,72 @@ def substituir_pptx(prs, mapeamento):
                         for tag, valor in mapeamento.items():
                             if tag in run.text: run.text = run.text.replace(tag, str(valor))
 
-# NOVA LÓGICA: Preenche as linhas clonando a formatação original perfeitamente para cada item
+# REFORMULADO: Substitui as tags nas linhas existentes do topo para o fundo
 def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
     doc = Document(caminho_template)
     
-    # 1. Substitui os dados do topo (Nome, Matrícula, etc.)
+    # 1. Substitui os dados do cabeçalho
     substituir_docx(doc, mapeamento)
     
-    # 2. Localiza a tabela de EPIs que contém a tag {{ITEM}}
+    # 2. Mapeia e preenche as linhas da tabela estática
     tabela_alvo = None
-    linha_modelo = None
+    linhas_tags = []
     
     for tabela in doc.tables:
         for row in tabela.rows:
             for cell in row.cells:
                 if "{{ITEM}}" in cell.text:
                     tabela_alvo = tabela
-                    linha_modelo = row
+                    linhas_tags.append(row)
                     break
-            if tabela_alvo: break
-        if tabela_alvo: break
+                    
+    if not tabela_alvo or len(linhas_tags) == 0:
+        raise Exception("Nenhuma linha contendo a tag {{ITEM}} foi localizada no template do Word.")
         
-    if not tabela_alvo or not linha_modelo:
-        raise Exception("A linha contendo as tags {{ITEM}}, {{DESC}}, etc. não foi encontrada no template do Word.")
+    qtd_items = len(df_epis)
+    linha_modelo = linhas_tags[0] # Usada caso precise clonar mais linhas
     
-    # Guarda uma referência do elemento XML da linha modelo para clonagem limpa
-    tr_modelo = linha_modelo._tr
-    
-    # Percorre os itens da planilha de EPIs
-    for idx, item in df_epis.iterrows():
-        num_seq = f"{idx + 1:02d}"
-        
-        # Cria uma nova linha idêntica copiando os estilos da linha modelo
-        nova_tr = copy.deepcopy(tr_modelo)
-        nova_linha = tabela_alvo.add_row()
-        nova_linha._tr.getparent().replace(nova_linha._tr, nova_tr)
-        nova_linha._tr = nova_tr
-        
-        # Preenche os dados célula por célula da nova linha gerada
-        for cell in nova_linha.cells:
-            if "{{ITEM}}" in cell.text: cell.text = cell.text.replace("{{ITEM}}", num_seq)
-            if "{{DESC}}" in cell.text: cell.text = cell.text.replace("{{DESC}}", limpar_valor(item.get('Descrição', '')))
-            if "{{CA}}" in cell.text: cell.text = cell.text.replace("{{CA}}", limpar_valor(item.get('C.A.', '')))
-            if "{{QT}}" in cell.text: cell.text = cell.text.replace("{{QT}}", limpar_valor(item.get('qt.', '')))
-            if "unid" in cell.text: cell.text = cell.text.replace("unid", limpar_valor(item.get('unid.', 'unid')))
-            if "{{DATA}}" in cell.text: cell.text = cell.text.replace("{{DATA}}", datetime.now().strftime("%d/%m/%Y"))
+    # Preenche ordenadamente de cima para baixo
+    for i, linha_row in enumerate(linhas_tags):
+        if i < qtd_items:
+            item = df_epis.iloc[i]
+            num_seq = f"{i + 1:02d}"
+            for cell in linha_row.cells:
+                if "{{ITEM}}" in cell.text: cell.text = cell.text.replace("{{ITEM}}", num_seq)
+                if "{{DESC}}" in cell.text: cell.text = cell.text.replace("{{DESC}}", limpar_valor(item.get('Descrição', '')))
+                if "{{CA}}" in cell.text: cell.text = cell.text.replace("{{CA}}", limpar_valor(item.get('C.A.', '')))
+                if "{{QT}}" in cell.text: cell.text = cell.text.replace("{{QT}}", limpar_valor(item.get('qt.', '')))
+                if "unid" in cell.text: cell.text = cell.text.replace("unid", limpar_valor(item.get('unid.', 'unid')))
+                if "{{DATA}}" in cell.text: cell.text = cell.text.replace("{{DATA}}", datetime.now().strftime("%d/%m/%Y"))
+        else:
+            # Limpa as tags das linhas que sobrarem na tabela para não ficarem feias no PDF
+            for cell in linha_row.cells:
+                if "{{ITEM}}" in cell.text: cell.text = cell.text.replace("{{ITEM}}", "")
+                if "{{DESC}}" in cell.text: cell.text = cell.text.replace("{{DESC}}", "")
+                if "{{CA}}" in cell.text: cell.text = cell.text.replace("{{CA}}", "")
+                if "{{QT}}" in cell.text: cell.text = cell.text.replace("{{QT}}", "")
+                if "unid" in cell.text: cell.text = cell.text.replace("unid", "")
+                if "{{DATA}}" in cell.text: cell.text = cell.text.replace("{{DATA}}", "")
+
+    # Caso raro: se o funcionário tiver MAIS EPIs do que o número de linhas físicas do template, o código cria novas dinamicamente
+    if qtd_items > len(linhas_tags):
+        tr_modelo = linha_modelo._tr
+        for i in range(len(linhas_tags), qtd_items):
+            item = df_epis.iloc[i]
+            num_seq = f"{i + 1:02d}"
             
-    # Remove a linha modelo original com os colchetes textuais vazios que serviu de molde
-    parent = tr_modelo.getparent()
-    parent.remove(tr_modelo)
+            nova_tr = copy.deepcopy(tr_modelo)
+            nova_linha = tabela_alvo.add_row()
+            nova_linha._tr.getparent().replace(nova_linha._tr, nova_tr)
+            nova_linha._tr = nova_tr
+            
+            for cell in nova_linha.cells:
+                if "{{ITEM}}" in cell.text: cell.text = cell.text.replace("{{ITEM}}", num_seq)
+                if "{{DESC}}" in cell.text: cell.text = cell.text.replace("{{DESC}}", limpar_valor(item.get('Descrição', '')))
+                if "{{CA}}" in cell.text: cell.text = cell.text.replace("{{CA}}", limpar_valor(item.get('C.A.', '')))
+                if "{{QT}}" in cell.text: cell.text = cell.text.replace("{{QT}}", limpar_valor(item.get('qt.', '')))
+                if "unid" in cell.text: cell.text = cell.text.replace("unid", limpar_valor(item.get('unid.', 'unid')))
+                if "{{DATA}}" in cell.text: cell.text = cell.text.replace("{{DATA}}", datetime.now().strftime("%d/%m/%Y"))
             
     output = io.BytesIO()
     doc.save(output)
@@ -324,7 +341,7 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # 2. Ficha de EPI Automatizada (DOCX -> PDF)
+                # 2. Ficha de EPI Alinhada de Cima para Baixo (DOCX -> PDF)
                 if g_ficha:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
@@ -351,7 +368,7 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_pptx, nome_pptx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                if arquivos:
+                if archivos:
                     z_b = io.BytesIO()
                     with zipfile.ZipFile(z_b, "w") as z:
                         for n, d in arquivos.items(): z.writestr(n, d)
