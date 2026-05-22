@@ -21,7 +21,7 @@ BASE_PATH = os.getcwd()
 # Caminhos dos arquivos na raiz do repositório
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
-TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.xlsx")
+TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.docx")
 TEMPLATE_OS_JUNIOR = os.path.join(BASE_PATH, "template_os_Junior.docx")
 TEMPLATE_NR06_JUNIOR = os.path.join(BASE_PATH, "template_nr06_Junior.pptx")
 TEMPLATE_OS_SIMONE = os.path.join(BASE_PATH, "template_os_simone.docx")
