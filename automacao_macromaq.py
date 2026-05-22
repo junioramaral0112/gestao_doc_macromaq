@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from docx import Document
 from pptx import Presentation
-import openpyxl
 import io
 import os
 import zipfile
@@ -18,10 +17,10 @@ st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 # Usar o diretório atual para facilitar o deploy no GitHub/Streamlit Cloud
 BASE_PATH = os.getcwd()
 
-# Caminhos dos arquivos na raiz do repositório
+# Mantendo seu padrão original de caminhos na raiz do repositório
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
-TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.docx")
+TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.docx")  # ALTERADO PARA DOCX
 TEMPLATE_OS_JUNIOR = os.path.join(BASE_PATH, "template_os_Junior.docx")
 TEMPLATE_NR06_JUNIOR = os.path.join(BASE_PATH, "template_nr06_Junior.pptx")
 TEMPLATE_OS_SIMONE = os.path.join(BASE_PATH, "template_os_simone.docx")
@@ -137,15 +136,6 @@ def remover_acentos(texto):
     if not isinstance(texto, str): return str(texto)
     return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
 
-def limpar_espacos_texto(texto):
-    """Remove quebras de linha abruptas e múltiplos espaços que quebram o alinhamento do Word."""
-    if not isinstance(texto, str):
-        return ""
-    texto_limpo = texto.replace("\n", " ").replace("\r", " ")
-    while "  " in texto_limpo:
-        texto_limpo = texto_limpo.replace("  ", " ")
-    return texto_limpo.strip()
-
 @st.cache_data(ttl=300)
 def carregar_aba(aba_nome):
     try:
@@ -195,96 +185,20 @@ def converter_para_pdf_linux(conteudo_arquivo, nome_original):
             os.remove(temp_pdf_path)
             return pdf_bytes, nome_pdf
     except Exception as e:
-        pass  
+        pass
     return None, None
 
 # --- PROCESSAMENTO DE DOCUMENTOS ---
-def preencher_excel_ficha(caminho_template, mapeamento, df_epis):
-    wb = openpyxl.load_workbook(caminho_template)
-    ws = wb.active
-    for row in ws.iter_rows():
-        for cell in row:
-            if isinstance(cell.value, str):
-                for tag, valor in mapeamento.items():
-                    if tag in cell.value:
-                        cell.value = cell.value.replace(tag, str(valor))
-        
-    linha_tabela = None
-    for row in ws.iter_rows():
-        for cell in row:
-            if cell.value and "{{ITEM}}" in str(cell.value):
-                linha_tabela = cell.row
-                break
-        if linha_tabela: break
-        
-    if not linha_tabela: raise Exception("Tag {{ITEM}} não encontrada.")
-    
-    for i in range(25):
-        r = linha_tabela + i
-        if i < len(df_epis):
-            item = df_epis.iloc[i]
-            ws.cell(row=r, column=1).value = f"{i+1:02d}"
-            ws.cell(row=r, column=2).value = limpar_valor(item.get('Descrição', ''))
-            ws.cell(row=r, column=5).value = limpar_valor(item.get('C.A.', ''))
-            ws.cell(row=r, column=6).value = limpar_valor(item.get('qt.', ''))
-            ws.cell(row=r, column=7).value = limpar_valor(item.get('unid.', ''))
-            ws.cell(row=r, column=8).value = datetime.now().strftime("%d/%m/%Y")
-        else:
-            for c in [1, 2, 5, 6, 7, 8]: ws.cell(row=r, column=c).value = ""
-            
-    output = io.BytesIO()
-    wb.save(output)
-    return output.getvalue()
-
-def processar_paragrafo_com_runs(p, tag, valor):
-    """Substitui a tag dentro de um parágrafo reconstruindo o texto para não quebrar estilos do Word."""
-    if tag in p.text:
-        # Se a tag está inteira dentro de um único run (caso ideal)
-        tag_substituida = False
-        for run in p.runs:
-            if tag in run.text:
-                run.text = run.text.replace(tag, valor)
-                tag_substituida = True
-        
-        # Se o Word fragmentou a tag (ex: '{' em um run, '{FUNCAO}' em outro)
-        if not tag_substituida and len(p.runs) > 0:
-            texto_completo = p.text.replace(tag, valor)
-            primeiro_run = p.runs[0]
-            
-            # Copia a formatação original exata
-            guardar_negrito = primeiro_run.bold
-            guardar_italico = primeiro_run.italic
-            guardar_fonte = primeiro_run.font.name
-            guardar_tamanho = primeiro_run.font.size
-            guardar_cor = primeiro_run.font.color.rgb if primeiro_run.font.color else None
-            
-            # Limpa os fragmentos e injeta o texto com o layout preservado
-            p.text = ""
-            novo_run = p.add_run(texto_completo)
-            novo_run.bold = guardar_negrito
-            novo_run.italic = guardar_italico
-            if guardar_fonte: novo_run.font.name = guardar_fonte
-            if guardar_tamanho: novo_run.font.size = guardar_tamanho
-            if guardar_cor: novo_run.font.color.rgb = guardar_cor
-
 def substituir_docx(doc, mapeamento):
-    """Varre parágrafos comuns e tabelas aplicando a substituição segura por runs."""
-    # 1. Substituição nos parágrafos comuns do corpo do texto
     for p in doc.paragraphs:
         for tag, valor in mapeamento.items():
-            if tag in p.text:
-                val_processado = limpar_espacos_texto(valor) if tag in ["{{RISCOS_AGENTES}}", "{{MEDIDAS_PROTECAO}}", "{{DESCRICAO_ATIVIDADE}}"] else str(valor)
-                processar_paragrafo_com_runs(p, tag, val_processado)
-
-    # 2. Substituição rigorosa e segura dentro de células de Tabelas
+            if tag in p.text: p.text = p.text.replace(tag, str(valor))
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for p in cell.paragraphs:
                     for tag, valor in mapeamento.items():
-                        if tag in p.text:
-                            val_processado = limpar_espacos_texto(valor) if tag in ["{{RISCOS_AGENTES}}", "{{MEDIDAS_PROTECAO}}", "{{DESCRICAO_ATIVIDADE}}"] else str(valor)
-                            processar_paragrafo_com_runs(p, tag, val_processado)
+                        if tag in p.text: p.text = p.text.replace(tag, str(valor))
 
 def substituir_pptx(prs, mapeamento):
     for slide in prs.slides:
@@ -294,6 +208,42 @@ def substituir_pptx(prs, mapeamento):
                     for run in paragraph.runs:
                         for tag, valor in mapeamento.items():
                             if tag in run.text: run.text = run.text.replace(tag, str(valor))
+
+def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
+    doc = Document(caminho_template)
+    
+    # Preenche o cabeçalho usando o mapeamento padrão
+    substituir_docx(doc, mapeamento)
+    
+    # Procura as tags dinâmicas de itens na tabela do Word de forma posicional
+    qtd_items = len(df_epis)
+    
+    # Mapeamento dinâmico para até 25 linhas com base nas tags criadas no Word
+    mapeamento_tabela = {}
+    for i in range(25):
+        num_item = f"{i+1:02d}"
+        if i < qtd_items:
+            item = df_epis.iloc[i]
+            mapeamento_tabela[f"{{{{ITEM_{num_item}}}}}"] = num_item
+            mapeamento_tabela[f"{{{{DESC_{num_item}}}}}"] = limpar_valor(item.get('Descrição', ''))
+            mapeamento_tabela[f"{{{{CA_{num_item}}}}}"] = limpar_valor(item.get('C.A.', ''))
+            mapeamento_tabela[f"{{{{QT_{num_item}}}}}"] = limpar_valor(item.get('qt.', ''))
+            mapeamento_tabela[f"{{{{UN_{num_item}}}}}"] = limpar_valor(item.get('unid.', ''))
+            mapeamento_tabela[f"{{{{DT_{num_item}}}}}"] = datetime.now().strftime("%d/%m/%Y")
+        else:
+            # Limpa as tags caso o funcionário tenha menos que 25 EPIs
+            mapeamento_tabela[f"{{{{ITEM_{num_item}}}}}"] = ""
+            mapeamento_tabela[f"{{{{DESC_{num_item}}}}}"] = ""
+            mapeamento_tabela[f"{{{{CA_{num_item}}}}}"] = ""
+            mapeamento_tabela[f"{{{{QT_{num_item}}}}}"] = ""
+            mapeamento_tabela[f"{{{{UN_{num_item}}}}}"] = ""
+            mapeamento_tabela[f"{{{{DT_{num_item}}}}}"] = ""
+            
+    substituir_docx(doc, mapeamento_tabela)
+    
+    output = io.BytesIO()
+    doc.save(output)
+    return output.getvalue()
 
 # --- APP LOGIC ---
 aplicar_layout()
@@ -326,9 +276,10 @@ if not df_colab.empty and not df_cargos.empty:
     t_nr = TEMPLATE_NR06_JUNIOR if tecnico_sel == "Técnico Junior" else TEMPLATE_NR06_SIMONE
 
     st.markdown("<br>", unsafe_allow_html=True)
-    
     c1, c2, c3 = st.columns(3)
     g_os, g_ficha, g_cert = c1.checkbox("OS", True), c2.checkbox("Ficha EPI", True), c3.checkbox("Certificado", True)
+
+    # Caixa para decidir se quer embutir PDFs
     incluir_pdf = st.checkbox("📄 Incluir cópias em formato PDF no Kit", True)
 
     if st.button("🚀 PROCESSAR DOCUMENTOS"):
@@ -339,47 +290,12 @@ if not df_colab.empty and not df_cargos.empty:
             desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
 
             if not desc_f.empty:
-                if 'Descrição da Função' in desc_f.columns:
-                    desc_atv = desc_f['Descrição da Função'].values[0]
-                elif 'Descrição da Atividade' in desc_f.columns:
-                    desc_atv = desc_f['Descrição da Atividade'].values[0]
-                else:
-                    desc_atv = ""
+                desc_atv = desc_f['Descrição da Atividade'].values[0]
                 
-                texto_riscos = desc_f['Riscos e Agentes Existentes'].values[0] if 'Riscos e Agentes Existentes' in desc_f.columns else ""
-                texto_medidas = desc_f['Medidas de Proteção'].values[0] if 'Medidas de Proteção' in desc_f.columns else ""
-                
-                if pd.isna(texto_riscos) or str(texto_riscos).strip() == "":
-                    texto_riscos = "Ergonômicos: Posturas incômodas ou pouco confortáveis por longos períodos (Trabalho sentado) – Reconhecido."
-                if pd.isna(texto_medidas) or str(texto_medidas).strip() == "":
-                    texto_medidas = "Equipamentos de Proteção Individual (EPI's): Não aplicável (N/A) para a rotina de escritório administrativa padrão."
-                
-                setor_real = ""
-                for col_nome in ['Setor', 'NomeLocal', 'Nome Setor', 'Departamento']:
-                    if col_nome in dados_colab.index and not pd.isna(dados_colab[col_nome]):
-                        setor_real = str(dados_colab[col_nome]).strip()
-                        break
-                if not setor_real or setor_real.lower() in ['nan', '']:
-                    setor_real = "Setor Operacional"
-
+                # 1. Ordem de Serviço (DOCX -> PDF)
                 if g_os:
                     doc = Document(t_os)
-                    
-                    # MAPEAMENTO: Enviando as duas variações de chaves (com e sem acento) para blindagem completa do template
-                    mapeamento_os = {
-                        "{{NOME}}": dados_colab['Nome Colaborador'], 
-                        "{{FUNCAO}}": cargo.upper(), 
-                        "{{FUNÇÃO}}": cargo.upper(), 
-                        "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], 
-                        "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], 
-                        "{{SETOR}}": setor_real, 
-                        "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), 
-                        "{{DATA}}": datetime.now().strftime("%d/%m/%Y"),
-                        "{{RISCOS_AGENTES}}": str(texto_riscos),   
-                        "{{MEDIDAS_PROTECAO}}": str(texto_medidas)  
-                    }
-                    
-                    substituir_docx(doc, mapeamento_os)
+                    substituir_docx(doc, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
                     b = io.BytesIO(); doc.save(b)
                     conteudo_docx = b.getvalue()
                     nome_docx = f"OS {nome_sel}.docx"
@@ -389,16 +305,24 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
+                # 2. Ficha de EPI (DOCX -> PDF) - NOVA IMPLEMENTAÇÃO INFALÍVEL
                 if g_ficha:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
                     if not df_e.empty:
-                        m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{FUNÇÃO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": setor_real, "{{CENTRO_CUSTO}}": ""}
-                        arquivos[f"Ficha EPI {nome_sel}.xlsx"] = preencher_excel_ficha(TEMPLATE_FICHA, m_f, df_e)
+                        m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{CENTRO_CUSTO}}": ""}
+                        conteudo_ficha_docx = preencher_ficha_docx(TEMPLATE_FICHA, m_f, df_e)
+                        nome_ficha_docx = f"Ficha EPI {nome_sel}.docx"
+                        arquivos[nome_ficha_docx] = conteudo_ficha_docx
+                        
+                        if incluir_pdf:
+                            pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_ficha_docx, nome_ficha_docx)
+                            if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
+                # 3. Certificado NR06 (PPTX -> PDF)
                 if g_cert:
                     prs = Presentation(t_nr)
-                    substituir_pptx(prs, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{FUNÇÃO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
+                    substituir_pptx(prs, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
                     b = io.BytesIO(); prs.save(b)
                     conteudo_pptx = b.getvalue()
                     nome_pptx = f"NR06 {nome_sel}.pptx"
