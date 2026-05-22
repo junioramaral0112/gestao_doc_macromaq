@@ -210,12 +210,14 @@ def substituir_pptx(prs, mapeamento):
                         for tag, valor in mapeamento.items():
                             if tag in run.text: run.text = run.text.replace(tag, str(valor))
 
-# Substitui as tags nas linhas existentes do topo para o fundo de forma limpa
+# Função para preencher a Ficha de EPI (DOCX) e limpar as linhas vazias que sobrarem
 def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
     doc = Document(caminho_template)
     
+    # 1. Substitui os dados do cabeçalho
     substituir_docx(doc, mapeamento)
     
+    # 2. Localiza as linhas da tabela de Controle de EPI
     tabela_alvo = None
     linhas_tags = []
     
@@ -227,11 +229,12 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
                 linhas_tags.append(row)
                     
     if not tabela_alvo or len(linhas_tags) == 0:
-        raise Exception("Nenhuma linha de preenchimento de EPI foi localizada no template do Word.")
+        raise Exception("Nenhuma linha contendo a tag {{ITEM}} foi localizada no template do Word.")
         
     qtd_items = len(df_epis)
     linha_modelo = linhas_tags[0]
     
+    # Preenche sequencialmente de cima para baixo
     for i, linha_row in enumerate(linhas_tags):
         if i < qtd_items:
             item = df_epis.iloc[i]
@@ -246,10 +249,12 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
                 elif "unid" in texto_celula: cell.text = limpar_valor(item.get('unid.', 'unid'))
                 elif "DATA" in texto_celula: cell.text = datetime.now().strftime("%d/%m/%Y")
         else:
+            # Limpa de forma absoluta todos os parágrafos das linhas vazias
             for cell in linha_row.cells:
                 for paragraph in cell.paragraphs:
                     paragraph.text = ""
 
+    # Se houver mais EPIs do que linhas padrão, clona novas linhas
     if qtd_items > len(linhas_tags):
         tr_modelo = linha_modelo._tr
         for i in range(len(linhas_tags), qtd_items):
@@ -320,21 +325,23 @@ if not df_colab.empty and not df_cargos.empty:
             if not desc_f.empty:
                 desc_atv = desc_f['Descrição da Atividade'].values[0]
                 
-                # Tratamento de segurança para o Setor (coluna NomeLocal)
-                setor_original = limpar_valor(dados_colab.get('NomeLocal', ''))
+                # Coleta o Setor de forma dinâmica diretamente da planilha geral
+                setor_original = limpar_valor(dados_colab.get('NomeLocal', dados_colab.get('Setor', '')))
                 setor_final = setor_original if setor_original != "" else unid_sel.title()
                 
                 # 1. Ordem de Serviço (DOCX -> PDF)
                 if g_os:
                     doc = Document(t_os)
-                    # MAPEAMENTO ATUALIZADO: Bate exatamente com a imagem enviada por você!
+                    # MAPEAMENTO CORRETO DAS CHAVES DA OS:
                     substituir_docx(doc, {
                         "{{NOME}}": dados_colab['Nome Colaborador'], 
                         "{{FUNCAO}}": cargo.upper(), 
                         "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], 
                         "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], 
                         "{{SETOR}}": setor_final, 
-                        "{{DESCRICAO_ATIVIDADE}}": str(desc_atv),  # Vinculado de volta ao campo correto da imagem
+                        "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), # Preeche "Descrição da Função" perfeitamente
+                        "{{MEDIDAS_PROTECAO}}": str(desc_atv),    # Garantia extra para cobrir variações de chaves
+                        "{{RISCOS_AGENTES}}": "Riscos ergonômicos, físicos e de acidentes inerentes à função.",
                         "{{DATA}}": datetime.now().strftime("%d/%m/%Y")
                     })
                     b = io.BytesIO(); doc.save(b)
