@@ -210,20 +210,17 @@ def substituir_pptx(prs, mapeamento):
                         for tag, valor in mapeamento.items():
                             if tag in run.text: run.text = run.text.replace(tag, str(valor))
 
-# ATUALIZADO: Força a limpeza absoluta limpando as propriedades internas de texto quebrado do Word
+# Substitui as tags nas linhas existentes do topo para o fundo de forma limpa
 def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
     doc = Document(caminho_template)
     
-    # 1. Substitui os dados do cabeçalho
     substituir_docx(doc, mapeamento)
     
-    # 2. Localiza as linhas da tabela que servem para o Controle de EPI
     tabela_alvo = None
     linhas_tags = []
     
     for tabela in doc.tables:
         for row in tabela.rows:
-            # Varre as células buscando indício de tag estrutural, mesmo que fragmentada
             texto_linha = "".join(cell.text for cell in row.cells)
             if "ITEM" in texto_linha or "DESC" in texto_linha:
                 tabela_alvo = tabela
@@ -235,13 +232,11 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
     qtd_items = len(df_epis)
     linha_modelo = linhas_tags[0]
     
-    # Preenche sequencialmente de cima para baixo
     for i, linha_row in enumerate(linhas_tags):
         if i < qtd_items:
             item = df_epis.iloc[i]
             num_seq = f"{i + 1:02d}"
             
-            # Preenchimento forçado limpando ruídos antigos das células ativas
             for cell in linha_row.cells:
                 texto_celula = cell.text
                 if "ITEM" in texto_celula: cell.text = num_seq
@@ -251,15 +246,12 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
                 elif "unid" in texto_celula: cell.text = limpar_valor(item.get('unid.', 'unid'))
                 elif "DATA" in texto_celula: cell.text = datetime.now().strftime("%d/%m/%Y")
         else:
-            # CORREÇÃO CRUCIAL: Se a linha sobrou, limpa todos os parágrafos internos da célula.
-            # Isso apaga tags estilhaçadas do Word (ex: {{ITE e M}}) de forma 100% garantida.
             for cell in linha_row.cells:
                 for paragraph in cell.paragraphs:
                     paragraph.text = ""
 
-    # Se o colaborador tiver mais itens do que as linhas padrão do template, cria novas dinamicamente
     if qtd_items > len(linhas_tags):
-        tr_modelo = linha_modelo._tr
+        tr_modelo = App_Logic = linha_modelo._tr
         for i in range(len(linhas_tags), qtd_items):
             item = df_epis.iloc[i]
             num_seq = f"{i + 1:02d}"
@@ -269,7 +261,6 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
             nova_linha._tr.getparent().replace(nova_linha._tr, nova_tr)
             nova_linha._tr = nova_tr
             
-            # Preenche a nova linha clonada limpando marcas antigas
             for cell in nova_linha.cells:
                 texto_celula = cell.text
                 if "ITEM" in texto_celula: cell.text = num_seq
@@ -317,7 +308,6 @@ if not df_colab.empty and not df_cargos.empty:
     c1, c2, c3 = st.columns(3)
     g_os, g_ficha, g_cert = c1.checkbox("OS", True), c2.checkbox("Ficha EPI", True), c3.checkbox("Certificado", True)
 
-    # Caixa para decidir se quer embutir PDFs
     incluir_pdf = st.checkbox("📄 Incluir cópias em formato PDF no Kit", True)
 
     if st.button("🚀 PROCESSAR DOCUMENTOS"):
@@ -328,12 +318,24 @@ if not df_colab.empty and not df_cargos.empty:
             desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
 
             if not desc_f.empty:
+                # ATUALIZAÇÃO CORRETIVA DA OS: Extraímos a descrição da atividade (que preenche as Medidas de Proteção)
+                # Se sua tabela dinâmica tiver colunas separadas para Riscos, podemos puxar diretamente dela aqui.
                 desc_atv = desc_f['Descrição da Atividade'].values[0]
                 
                 # 1. Ordem de Serviço (DOCX -> PDF)
                 if g_os:
                     doc = Document(t_os)
-                    substituir_docx(doc, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{FUNCAO}}": cargo.upper(), "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), "{{DATA}}": datetime.now().strftime("%d/%m/%Y")})
+                    # CORREÇÃO CRUCIAL AQUI: Ajustado o mapeamento das chaves para bater exatamente com {{MEDIDAS_PROTECAO}} e {{RISCOS_AGENTES}} presentes no seu template
+                    substituir_docx(doc, {
+                        "{{NOME}}": dados_colab['Nome Colaborador'], 
+                        "{{FUNCAO}}": cargo.upper(), 
+                        "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], 
+                        "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], 
+                        "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), 
+                        "{{MEDIDAS_PROTECAO}}": str(desc_atv), 
+                        "{{RISCOS_AGENTES}}": "Riscos ergonômicos, físicos e de acidentes inerentes à função.", # Pode substituir pela coluna de riscos da sua planilha se houver
+                        "{{DATA}}": datetime.now().strftime("%d/%m/%Y")
+                    })
                     b = io.BytesIO(); doc.save(b)
                     conteudo_docx = b.getvalue()
                     nome_docx = f"OS {nome_sel}.docx"
@@ -343,7 +345,7 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # 2. Ficha de EPI com Limpeza Absoluta Dinâmica (DOCX -> PDF)
+                # 2. Ficha de EPI (DOCX -> PDF)
                 if g_ficha:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
