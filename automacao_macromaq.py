@@ -210,7 +210,7 @@ def substituir_pptx(prs, mapeamento):
                         for tag, valor in mapeamento.items():
                             if tag in run.text: run.text = run.text.replace(tag, str(valor))
 
-# REFORMULADO: Substitui as tags nas linhas existentes do topo para o fundo
+# Preenche as tabelas de forma sequencial do topo para o fundo de forma limpa
 def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
     doc = Document(caminho_template)
     
@@ -233,9 +233,9 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
         raise Exception("Nenhuma linha contendo a tag {{ITEM}} foi localizada no template do Word.")
         
     qtd_items = len(df_epis)
-    linha_modelo = linhas_tags[0] # Usada caso precise clonar mais linhas
+    linha_modelo = linhas_tags[0]  # Corrigido aqui: Removido o erro de digitação da atribuição múltipla
     
-    # Preenche ordenadamente de cima para baixo
+    # Preenche ordenadamente de cima para baixo nas linhas existentes
     for i, linha_row in enumerate(linhas_tags):
         if i < qtd_items:
             item = df_epis.iloc[i]
@@ -248,7 +248,7 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
                 if "unid" in cell.text: cell.text = cell.text.replace("unid", limpar_valor(item.get('unid.', 'unid')))
                 if "{{DATA}}" in cell.text: cell.text = cell.text.replace("{{DATA}}", datetime.now().strftime("%d/%m/%Y"))
         else:
-            # Limpa as tags das linhas que sobrarem na tabela para não ficarem feias no PDF
+            # Limpa as tags das linhas sobressalentes para não ficarem expostas no PDF
             for cell in linha_row.cells:
                 if "{{ITEM}}" in cell.text: cell.text = cell.text.replace("{{ITEM}}", "")
                 if "{{DESC}}" in cell.text: cell.text = cell.text.replace("{{DESC}}", "")
@@ -257,7 +257,7 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
                 if "unid" in cell.text: cell.text = cell.text.replace("unid", "")
                 if "{{DATA}}" in cell.text: cell.text = cell.text.replace("{{DATA}}", "")
 
-    # Caso raro: se o funcionário tiver MAIS EPIs do que o número de linhas físicas do template, o código cria novas dinamicamente
+    # Se o colaborador tiver mais EPIs do que linhas padrão na tabela, clona novas linhas abaixo
     if qtd_items > len(linhas_tags):
         tr_modelo = linha_modelo._tr
         for i in range(len(linhas_tags), qtd_items):
@@ -341,7 +341,7 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # 2. Ficha de EPI Alinhada de Cima para Baixo (DOCX -> PDF)
+                # 2. Ficha de EPI (DOCX -> PDF)
                 if g_ficha:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
@@ -368,7 +368,7 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_pptx, nome_pptx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                if archivos:
+                if arquivos:
                     z_b = io.BytesIO()
                     with zipfile.ZipFile(z_b, "w") as z:
                         for n, d in arquivos.items(): z.writestr(n, d)
