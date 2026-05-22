@@ -251,7 +251,7 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
                     paragraph.text = ""
 
     if qtd_items > len(linhas_tags):
-        tr_modelo = App_Logic = linha_modelo._tr
+        tr_modelo = linha_modelo._tr
         for i in range(len(linhas_tags), qtd_items):
             item = df_epis.iloc[i]
             num_seq = f"{i + 1:02d}"
@@ -318,22 +318,23 @@ if not df_colab.empty and not df_cargos.empty:
             desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
 
             if not desc_f.empty:
-                # ATUALIZAÇÃO CORRETIVA DA OS: Extraímos a descrição da atividade (que preenche as Medidas de Proteção)
-                # Se sua tabela dinâmica tiver colunas separadas para Riscos, podemos puxar diretamente dela aqui.
                 desc_atv = desc_f['Descrição da Atividade'].values[0]
+                
+                # Tratamento de segurança para o Setor (coluna NomeLocal)
+                setor_original = limpar_valor(dados_colab.get('NomeLocal', ''))
+                setor_final = setor_original if setor_original != "" else unid_sel.title()
                 
                 # 1. Ordem de Serviço (DOCX -> PDF)
                 if g_os:
                     doc = Document(t_os)
-                    # CORREÇÃO CRUCIAL AQUI: Ajustado o mapeamento das chaves para bater exatamente com {{MEDIDAS_PROTECAO}} e {{RISCOS_AGENTES}} presentes no seu template
+                    # MAPEAMENTO ATUALIZADO: Bate exatamente com a imagem enviada por você!
                     substituir_docx(doc, {
                         "{{NOME}}": dados_colab['Nome Colaborador'], 
                         "{{FUNCAO}}": cargo.upper(), 
                         "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], 
                         "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], 
-                        "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), 
-                        "{{MEDIDAS_PROTECAO}}": str(desc_atv), 
-                        "{{RISCOS_AGENTES}}": "Riscos ergonômicos, físicos e de acidentes inerentes à função.", # Pode substituir pela coluna de riscos da sua planilha se houver
+                        "{{SETOR}}": setor_final, 
+                        "{{DESCRICAO_ATIVIDADE}}": str(desc_atv),  # Vinculado de volta ao campo correto da imagem
                         "{{DATA}}": datetime.now().strftime("%d/%m/%Y")
                     })
                     b = io.BytesIO(); doc.save(b)
@@ -350,7 +351,7 @@ if not df_colab.empty and not df_cargos.empty:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
                     if not df_e.empty:
-                        m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": str(dados_colab.get('NomeLocal', '')), "{{CENTRO_CUSTO}}": ""}
+                        m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": setor_final, "{{CENTRO_CUSTO}}": ""}
                         conteudo_ficha_docx = preencher_ficha_docx(TEMPLATE_FICHA, m_f, df_e)
                         nome_ficha_docx = f"Ficha EPI {nome_sel}.docx"
                         arquivos[nome_ficha_docx] = conteudo_ficha_docx
