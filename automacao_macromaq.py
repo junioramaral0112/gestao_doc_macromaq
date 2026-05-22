@@ -210,54 +210,54 @@ def substituir_pptx(prs, mapeamento):
                         for tag, valor in mapeamento.items():
                             if tag in run.text: run.text = run.text.replace(tag, str(valor))
 
-# Preenche as tabelas de forma sequencial do topo para o fundo de forma limpa
+# ATUALIZADO: Força a limpeza absoluta limpando as propriedades internas de texto quebrado do Word
 def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
     doc = Document(caminho_template)
     
     # 1. Substitui os dados do cabeçalho
     substituir_docx(doc, mapeamento)
     
-    # 2. Mapeia e preenche as linhas da tabela estática
+    # 2. Localiza as linhas da tabela que servem para o Controle de EPI
     tabela_alvo = None
     linhas_tags = []
     
     for tabela in doc.tables:
         for row in tabela.rows:
-            for cell in row.cells:
-                if "{{ITEM}}" in cell.text:
-                    tabela_alvo = tabela
-                    linhas_tags.append(row)
-                    break
+            # Varre as células buscando indício de tag estrutural, mesmo que fragmentada
+            texto_linha = "".join(cell.text for cell in row.cells)
+            if "ITEM" in texto_linha or "DESC" in texto_linha:
+                tabela_alvo = tabela
+                linhas_tags.append(row)
                     
     if not tabela_alvo or len(linhas_tags) == 0:
-        raise Exception("Nenhuma linha contendo a tag {{ITEM}} foi localizada no template do Word.")
+        raise Exception("Nenhuma linha de preenchimento de EPI foi localizada no template do Word.")
         
     qtd_items = len(df_epis)
-    linha_modelo = linhas_tags[0]  # Corrigido aqui: Removido o erro de digitação da atribuição múltipla
+    linha_modelo = linhas_tags[0]
     
-    # Preenche ordenadamente de cima para baixo nas linhas existentes
+    # Preenche sequencialmente de cima para baixo
     for i, linha_row in enumerate(linhas_tags):
         if i < qtd_items:
             item = df_epis.iloc[i]
             num_seq = f"{i + 1:02d}"
+            
+            # Preenchimento forçado limpando ruídos antigos das células ativas
             for cell in linha_row.cells:
-                if "{{ITEM}}" in cell.text: cell.text = cell.text.replace("{{ITEM}}", num_seq)
-                if "{{DESC}}" in cell.text: cell.text = cell.text.replace("{{DESC}}", limpar_valor(item.get('Descrição', '')))
-                if "{{CA}}" in cell.text: cell.text = cell.text.replace("{{CA}}", limpar_valor(item.get('C.A.', '')))
-                if "{{QT}}" in cell.text: cell.text = cell.text.replace("{{QT}}", limpar_valor(item.get('qt.', '')))
-                if "unid" in cell.text: cell.text = cell.text.replace("unid", limpar_valor(item.get('unid.', 'unid')))
-                if "{{DATA}}" in cell.text: cell.text = cell.text.replace("{{DATA}}", datetime.now().strftime("%d/%m/%Y"))
+                texto_celula = cell.text
+                if "ITEM" in texto_celula: cell.text = num_seq
+                elif "DESC" in texto_celula: cell.text = limpar_valor(item.get('Descrição', ''))
+                elif "CA" in texto_celula: cell.text = limpar_valor(item.get('C.A.', ''))
+                elif "QT" in texto_celula: cell.text = limpar_valor(item.get('qt.', ''))
+                elif "unid" in texto_celula: cell.text = limpar_valor(item.get('unid.', 'unid'))
+                elif "DATA" in texto_celula: cell.text = datetime.now().strftime("%d/%m/%Y")
         else:
-            # Limpa as tags das linhas sobressalentes para não ficarem expostas no PDF
+            # CORREÇÃO CRUCIAL: Se a linha sobrou, limpa todos os parágrafos internos da célula.
+            # Isso apaga tags estilhaçadas do Word (ex: {{ITE e M}}) de forma 100% garantida.
             for cell in linha_row.cells:
-                if "{{ITEM}}" in cell.text: cell.text = cell.text.replace("{{ITEM}}", "")
-                if "{{DESC}}" in cell.text: cell.text = cell.text.replace("{{DESC}}", "")
-                if "{{CA}}" in cell.text: cell.text = cell.text.replace("{{CA}}", "")
-                if "{{QT}}" in cell.text: cell.text = cell.text.replace("{{QT}}", "")
-                if "unid" in cell.text: cell.text = cell.text.replace("unid", "")
-                if "{{DATA}}" in cell.text: cell.text = cell.text.replace("{{DATA}}", "")
+                for paragraph in cell.paragraphs:
+                    paragraph.text = ""
 
-    # Se o colaborador tiver mais EPIs do que linhas padrão na tabela, clona novas linhas abaixo
+    # Se o colaborador tiver mais itens do que as linhas padrão do template, cria novas dinamicamente
     if qtd_items > len(linhas_tags):
         tr_modelo = linha_modelo._tr
         for i in range(len(linhas_tags), qtd_items):
@@ -269,13 +269,15 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
             nova_linha._tr.getparent().replace(nova_linha._tr, nova_tr)
             nova_linha._tr = nova_tr
             
+            # Preenche a nova linha clonada limpando marcas antigas
             for cell in nova_linha.cells:
-                if "{{ITEM}}" in cell.text: cell.text = cell.text.replace("{{ITEM}}", num_seq)
-                if "{{DESC}}" in cell.text: cell.text = cell.text.replace("{{DESC}}", limpar_valor(item.get('Descrição', '')))
-                if "{{CA}}" in cell.text: cell.text = cell.text.replace("{{CA}}", limpar_valor(item.get('C.A.', '')))
-                if "{{QT}}" in cell.text: cell.text = cell.text.replace("{{QT}}", limpar_valor(item.get('qt.', '')))
-                if "unid" in cell.text: cell.text = cell.text.replace("unid", limpar_valor(item.get('unid.', 'unid')))
-                if "{{DATA}}" in cell.text: cell.text = cell.text.replace("{{DATA}}", datetime.now().strftime("%d/%m/%Y"))
+                texto_celula = cell.text
+                if "ITEM" in texto_celula: cell.text = num_seq
+                elif "DESC" in texto_celula: cell.text = limpar_valor(item.get('Descrição', ''))
+                elif "CA" in texto_celula: cell.text = limpar_valor(item.get('C.A.', ''))
+                elif "QT" in texto_celula: cell.text = limpar_valor(item.get('qt.', ''))
+                elif "unid" in texto_celula: cell.text = limpar_valor(item.get('unid.', 'unid'))
+                elif "DATA" in texto_celula: cell.text = datetime.now().strftime("%d/%m/%Y")
             
     output = io.BytesIO()
     doc.save(output)
@@ -341,7 +343,7 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # 2. Ficha de EPI (DOCX -> PDF)
+                # 2. Ficha de EPI com Limpeza Absoluta Dinâmica (DOCX -> PDF)
                 if g_ficha:
                     df_e = carregar_aba(cargo)
                     if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
