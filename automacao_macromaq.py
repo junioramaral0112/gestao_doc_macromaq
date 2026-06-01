@@ -137,6 +137,12 @@ def remover_acentos(texto):
     if not isinstance(texto, str): return str(texto)
     return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
 
+def limpar_valor(valor):
+    """Função auxiliar que faltava para limpar os dados das células da tabela"""
+    if pd.isna(valor): 
+        return ""
+    return str(valor).strip()
+
 @st.cache_data(ttl=300)
 def carregar_aba(aba_nome):
     try:
@@ -155,13 +161,23 @@ def formatar_matricula(valor):
     except: return str(valor)
 
 def formatar_cpf(cpf):
-    cpf = ''.join(filter(str.isdigit, str(cpf))).zfill(11)
-    return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
+    try:
+        if pd.isna(cpf):
+            return ""
 
-def limpar_valor(valor):
-    if pd.isna(valor): return ""
-    texto = str(valor).strip()
-    return "" if texto.lower() in ["nan", "na"] else texto
+        cpf = str(cpf).strip()
+
+        if cpf.lower() in ["", "nan", "none"]:
+            return ""
+
+        cpf = ''.join(filter(str.isdigit, cpf))
+
+        if len(cpf) != 11:
+            return str(cpf) # Retorna o que achou se não tiver 11 dígitos, para não sumir
+
+        return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
+    except:
+        return ""
 
 # Função para converter arquivos do Office para PDF usando o LibreOffice do Servidor
 def converter_para_pdf_linux(conteudo_arquivo, nome_original):
@@ -186,7 +202,7 @@ def converter_para_pdf_linux(conteudo_arquivo, nome_original):
             os.remove(temp_pdf_path)
             return pdf_bytes, nome_pdf
     except Exception as e:
-        pass
+        st.sidebar.warning(f"Aviso: Não foi possível converter {nome_original} para PDF (Verifique se o LibreOffice está instalado no servidor). Erro: {e}")
     return None, None
 
 # --- PROCESSAMENTO DE DOCUMENTOS ---
@@ -329,18 +345,21 @@ if not df_colab.empty and not df_cargos.empty:
                 setor_original = limpar_valor(dados_colab.get('NomeLocal', dados_colab.get('Setor', '')))
                 setor_final = setor_original if setor_original != "" else unid_sel.title()
                 
+                # Coleta o CPF tratando possíveis variações de nome da coluna
+                cpf_bruto = dados_colab.get('CPF', dados_colab.get('Cpf', dados_colab.get('cpf', '')))
+                cpf_final = formatar_cpf(cpf_bruto)
+                
                 # 1. Ordem de Serviço (DOCX -> PDF)
                 if g_os:
                     doc = Document(t_os)
-                    # MAPEAMENTO CORRETO DAS CHAVES DA OS:
                     substituir_docx(doc, {
                         "{{NOME}}": dados_colab['Nome Colaborador'], 
                         "{{FUNCAO}}": cargo.upper(), 
                         "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], 
                         "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], 
                         "{{SETOR}}": setor_final, 
-                        "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), # Preeche "Descrição da Função" perfeitamente
-                        "{{MEDIDAS_PROTECAO}}": str(desc_atv),    # Garantia extra para cobrir variações de chaves
+                        "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), 
+                        "{{MEDIDAS_PROTECAO}}": str(desc_atv),    
                         "{{RISCOS_AGENTES}}": "Riscos ergonômicos, físicos e de acidentes inerentes à função.",
                         "{{DATA}}": datetime.now().strftime("%d/%m/%Y")
                     })
@@ -370,7 +389,22 @@ if not df_colab.empty and not df_cargos.empty:
                 # 3. Certificado NR06 (PPTX -> PDF)
                 if g_cert:
                     prs = Presentation(t_nr)
-                    substituir_pptx(prs, {"{{NOME}}": dados_colab['Nome Colaborador'], "{{CPF}}": formatar_cpf(dados_colab.get('CPF', '')), "{{FUNCAO}}": cargo, "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), "{{LOCAL_DATA}}": f"{unid_sel.title()}, {data_extenso_pt()}."})
+                    
+                    # CORREÇÃO DA DUPLICAÇÃO DA CIDADE:
+                    # Como o slide já possui o texto fixo "São José,", removemos a cidade da variável para manter apenas a data por extenso.
+                    # Caso mude de filial no futuro, o ideal seria remover o texto fixo "São José," do arquivo .pptx original e deixar apenas a tag {{LOCAL_DATA}} cuidar de tudo.
+                    if "SÃO JOSÉ" in unid_sel.upper():
+                        local_data_string = f"{data_extenso_pt()}."
+                    else:
+                        local_data_string = f"{unid_sel.title()}, {data_extenso_pt()}."
+
+                    substituir_pptx(prs, {
+                        "{{NOME}}": dados_colab['Nome Colaborador'], 
+                        "{{CPF}}": cpf_final if cpf_final != "" else "Não informado", 
+                        "{{FUNCAO}}": cargo, 
+                        "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), 
+                        "{{LOCAL_DATA}}": local_data_string
+                    })
                     b = io.BytesIO(); prs.save(b)
                     conteudo_pptx = b.getvalue()
                     nome_pptx = f"NR06 {nome_sel}.pptx"
