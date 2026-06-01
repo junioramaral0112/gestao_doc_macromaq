@@ -138,7 +138,7 @@ def remover_acentos(texto):
     return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
 
 def limpar_valor(valor):
-    """Função auxiliar que faltava para limpar os dados das células da tabela"""
+    """Função auxiliar que limpa strings e remove marcações nulas (NaN) do DataFrame"""
     if pd.isna(valor): 
         return ""
     return str(valor).strip()
@@ -170,10 +170,11 @@ def formatar_cpf(cpf):
         if cpf.lower() in ["", "nan", "none"]:
             return ""
 
+        # Limpa caracteres não numéricos
         cpf = ''.join(filter(str.isdigit, cpf))
 
         if len(cpf) != 11:
-            return str(cpf) # Retorna o que achou se não tiver 11 dígitos, para não sumir
+            return str(cpf) # Se não tiver 11 caracteres (ex: erro de digitação), retorna o número bruto para não sumir
 
         return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
     except:
@@ -202,7 +203,7 @@ def converter_para_pdf_linux(conteudo_arquivo, nome_original):
             os.remove(temp_pdf_path)
             return pdf_bytes, nome_pdf
     except Exception as e:
-        st.sidebar.warning(f"Aviso: Não foi possível converter {nome_original} para PDF (Verifique se o LibreOffice está instalado no servidor). Erro: {e}")
+        st.sidebar.warning(f"Aviso técnico: Falha ao converter {nome_original} para PDF (Verifique se o LibreOffice está instalado no ambiente). Detalhes: {e}")
     return None, None
 
 # --- PROCESSAMENTO DE DOCUMENTOS ---
@@ -345,8 +346,12 @@ if not df_colab.empty and not df_cargos.empty:
                 setor_original = limpar_valor(dados_colab.get('NomeLocal', dados_colab.get('Setor', '')))
                 setor_final = setor_original if setor_original != "" else unid_sel.title()
                 
-                # Coleta o CPF tratando possíveis variações de nome da coluna
-                cpf_bruto = dados_colab.get('CPF', dados_colab.get('Cpf', dados_colab.get('cpf', '')))
+                # --- BUSCA INTELIGENTE DO CPF (Coluna "S" ou variações de cabeçalho) ---
+                coluna_cpf = [col for col in df_colab.columns if 'CPF' in col.upper()]
+                if coluna_cpf:
+                    cpf_bruto = dados_colab[coluna_cpf[0]]
+                else:
+                    cpf_bruto = ""
                 cpf_final = formatar_cpf(cpf_bruto)
                 
                 # 1. Ordem de Serviço (DOCX -> PDF)
@@ -390,9 +395,7 @@ if not df_colab.empty and not df_cargos.empty:
                 if g_cert:
                     prs = Presentation(t_nr)
                     
-                    # CORREÇÃO DA DUPLICAÇÃO DA CIDADE:
-                    # Como o slide já possui o texto fixo "São José,", removemos a cidade da variável para manter apenas a data por extenso.
-                    # Caso mude de filial no futuro, o ideal seria remover o texto fixo "São José," do arquivo .pptx original e deixar apenas a tag {{LOCAL_DATA}} cuidar de tudo.
+                    # CORREÇÃO DA DUPLICAÇÃO DA CIDADE (Evita "São José, São José...")
                     if "SÃO JOSÉ" in unid_sel.upper():
                         local_data_string = f"{data_extenso_pt()}."
                     else:
