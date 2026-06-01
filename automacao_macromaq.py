@@ -147,7 +147,9 @@ def limpar_valor(valor):
 def carregar_aba(aba_nome):
     try:
         url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={quote(aba_nome)}"
-        return pd.read_csv(url)
+        # Solução para as linhas de baixo: Força o Pandas a ler tudo como texto puro (str)
+        df = pd.read_csv(url, dtype=str)
+        return df
     except:
         return pd.DataFrame()
 
@@ -163,22 +165,32 @@ def formatar_matricula(valor):
 def formatar_cpf(cpf):
     try:
         if pd.isna(cpf):
-            return ""
+            return "Não informado"
 
         cpf = str(cpf).strip()
 
-        if cpf.lower() in ["", "nan", "none"]:
-            return ""
+        # Remove o ".0" que o Pandas coloca automaticamente em números inteiros vindo do Excel/Sheets
+        if cpf.endswith('.0'):
+            cpf = cpf[:-2]
 
-        # Limpa caracteres não numéricos
+        if cpf.lower() in ["", "nan", "none", "0"]:
+            return "Não informado"
+
+        # Mantém estritamente apenas números na string
         cpf = ''.join(filter(str.isdigit, cpf))
 
-        if len(cpf) != 11:
-            return str(cpf) # Se não tiver 11 caracteres (ex: erro de digitação), retorna o número bruto para não sumir
+        # Se o CPF veio sem o zero na esquerda (com 10 dígitos), corrige adicionando o zero
+        if len(cpf) == 10:
+            cpf = "0" + cpf
 
-        return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
+        # Se tiver os 11 dígitos corretos, aplica a máscara visual bonita
+        if len(cpf) == 11:
+            return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
+        
+        # Caso o número digitado na planilha esteja incompleto ou errado, exibe ele bruto em vez de sumir
+        return cpf if cpf != "" else "Não informado"
     except:
-        return ""
+        return "Não informado"
 
 # Função para converter arquivos do Office para PDF usando o LibreOffice do Servidor
 def converter_para_pdf_linux(conteudo_arquivo, nome_original):
@@ -346,12 +358,19 @@ if not df_colab.empty and not df_cargos.empty:
                 setor_original = limpar_valor(dados_colab.get('NomeLocal', dados_colab.get('Setor', '')))
                 setor_final = setor_original if setor_original != "" else unid_sel.title()
                 
-                # --- BUSCA INTELIGENTE DO CPF (Coluna "S" ou variações de cabeçalho) ---
+                # --- BUSCA ULTRA AVANÇADA DA COLUNA S (CPF) ---
+                # Busca primeiro por nome de cabeçalho inteligente
                 coluna_cpf = [col for col in df_colab.columns if 'CPF' in col.upper()]
                 if coluna_cpf:
                     cpf_bruto = dados_colab[coluna_cpf[0]]
                 else:
-                    cpf_bruto = ""
+                    # Fallback de segurança caso as colunas da esquerda vazias mascarem o nome do cabeçalho
+                    try:
+                        # Posição absoluta da coluna S (19ª coluna da planilha, índice 18)
+                        cpf_bruto = dados_colab.iloc[18]
+                    except:
+                        cpf_bruto = ""
+                        
                 cpf_final = formatar_cpf(cpf_bruto)
                 
                 # 1. Ordem de Serviço (DOCX -> PDF)
@@ -403,7 +422,7 @@ if not df_colab.empty and not df_cargos.empty:
 
                     substituir_pptx(prs, {
                         "{{NOME}}": dados_colab['Nome Colaborador'], 
-                        "{{CPF}}": cpf_final if cpf_final != "" else "Não informado", 
+                        "{{CPF}}": cpf_final, 
                         "{{FUNCAO}}": cargo, 
                         "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), 
                         "{{LOCAL_DATA}}": local_data_string
