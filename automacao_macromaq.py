@@ -142,6 +142,17 @@ def limpar_valor(valor):
         return ""
     return str(valor).strip()
 
+def limpar_quebras_linha(texto):
+    """Remove quebras de linha abruptas e espaços duplos gerados pelo Sheets"""
+    if not isinstance(texto, str): 
+        texto = str(texto)
+    # Substitui quebras de linha por espaços simples
+    texto = texto.replace('\r', ' ').replace('\n', ' ')
+    # Remove espaços duplos ou triplos residuais
+    while "  " in texto:
+        texto = texto.replace("  ", " ")
+    return texto.strip()
+
 @st.cache_data(ttl=300)
 def carregar_aba(aba_nome):
     try:
@@ -270,7 +281,7 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
                     paragraph.text = ""
 
     if qtd_items > len(linhas_tags):
-        tr_modelo = Applinha_modelo._tr
+        tr_modelo = linha_modelo._tr  # CORRIGIDO AQUI (Removido o prefixo incorreto)
         for i in range(len(linhas_tags), qtd_items):
             item = df_epis.iloc[i]
             num_seq = f"{i + 1:02d}"
@@ -337,10 +348,10 @@ if not df_colab.empty and not df_cargos.empty:
             desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
 
             if not desc_f.empty:
-                # --- EXTRAÇÃO DINÂMICA DAS COLUNAS DA ABA CARGOS ---
-                desc_atv = str(desc_f['Descrição da Atividade'].fillna('').values[0]) if 'Descrição da Atividade' in desc_f.columns else ''
-                riscos_agentes = str(desc_f['Riscos e Agentes Existentes'].fillna('').values[0]) if 'Riscos e Agentes Existentes' in desc_f.columns else ''
-                medidas_protecao = str(desc_f['Medidas de Proteção'].fillna('').values[0]) if 'Medidas de Proteção' in desc_f.columns else ''
+                # --- EXTRAÇÃO DINÂMICA DAS COLUNAS COM REMOÇÃO DE ESPAÇOS E QUEBRAS ---
+                desc_atv = limpar_quebras_linha(desc_f['Descrição da Atividade'].fillna('').values[0]) if 'Descrição da Atividade' in desc_f.columns else ''
+                riscos_agentes = limpar_quebras_linha(desc_f['Riscos e Agentes Existentes'].fillna('').values[0]) if 'Riscos e Agentes Existentes' in desc_f.columns else ''
+                medidas_protecao = limpar_quebras_linha(desc_f['Medidas de Proteção'].fillna('').values[0]) if 'Medidas de Proteção' in desc_f.columns else ''
                 
                 # Coleta o Setor de forma dinâmica diretamente da planilha geral
                 setor_original = limpar_valor(dados_colab.get('NomeLocal', dados_colab.get('Setor', '')))
