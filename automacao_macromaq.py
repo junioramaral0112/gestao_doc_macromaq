@@ -153,7 +153,8 @@ def limpar_quebras_linha(texto):
 @st.cache_data(ttl=300)
 def carregar_aba(aba_nome):
     try:
-        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={quote(aba_nome)}"
+        # Codifica o nome da aba removendo espaços desnecessários nas pontas
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={quote(aba_nome.strip())}"
         df = pd.read_csv(url, dtype=str)
         return df
     except:
@@ -386,12 +387,25 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # 2. Ficha de EPI (Busca robusta com e sem acentos)
+                # 2. Ficha de EPI (Varredura de Fallbacks com limpeza de espaços ocultos)
                 if g_ficha:
-                    df_e = carregar_aba(cargo)
-                    if df_e.empty: 
-                        df_e = carregar_aba(remover_acentos(cargo))
+                    # Limpa o nome do cargo removendo espaços fantasmas nas bordas
+                    cargo_limpo = cargo.strip()
+                    df_e = carregar_aba(cargo_limpo)
                     
+                    # Se falhar, testa variações adicionando ou removendo espaços forçados
+                    if df_e.empty:
+                        df_e = carregar_aba(f"{cargo_limpo} ") # Espaço no final (Erro comum no Sheets)
+                    
+                    if df_e.empty:
+                        df_e = carregar_aba(cargo_limpo.title())
+                    
+                    if df_e.empty: 
+                        df_e = carregar_aba(remover_acentos(cargo_limpo))
+                    
+                    if df_e.empty and "jr" in cargo_limpo.lower():
+                        df_e = carregar_aba(cargo_limpo.lower().replace("jr", "Jr"))
+
                     if not df_e.empty:
                         m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": setor_final, "{{CENTRO_CUSTO}}": ""}
                         conteudo_ficha_docx = preencher_ficha_docx(TEMPLATE_FICHA, m_f, df_e)
@@ -402,8 +416,7 @@ if not df_colab.empty and not df_cargos.empty:
                             pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_ficha_docx, nome_ficha_docx)
                             if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
                     else:
-                        # Alerta visual caso o Pandas não ache a aba de EPIs correspondente
-                        st.warning(f"⚠️ Atenção: Não foi encontrada uma aba chamada '{cargo}' na planilha para gerar os itens da Ficha de EPI.")
+                        st.error(f"❌ Erro crítico: A aba de EPIs para o cargo '{cargo_limpo}' não pôde ser baixada. Verifique se o nome da aba lá embaixo na planilha tem espaços invisíveis no final.")
 
                 # 3. Certificado NR06
                 if g_cert:
