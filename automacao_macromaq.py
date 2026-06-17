@@ -143,12 +143,9 @@ def limpar_valor(valor):
     return str(valor).strip()
 
 def limpar_quebras_linha(texto):
-    """Remove quebras de linha abruptas e espaços duplos gerados pelo Sheets"""
     if not isinstance(texto, str): 
         texto = str(texto)
-    # Substitui quebras de linha por espaços simples
     texto = texto.replace('\r', ' ').replace('\n', ' ')
-    # Remove espaços duplos ou triplos residuais
     while "  " in texto:
         texto = texto.replace("  ", " ")
     return texto.strip()
@@ -281,7 +278,7 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
                     paragraph.text = ""
 
     if qtd_items > len(linhas_tags):
-        tr_modelo = linha_modelo._tr  # CORRIGIDO AQUI (Removido o prefixo incorreto)
+        tr_modelo = linha_modelo._tr
         for i in range(len(linhas_tags), qtd_items):
             item = df_epis.iloc[i]
             num_seq = f"{i + 1:02d}"
@@ -348,16 +345,13 @@ if not df_colab.empty and not df_cargos.empty:
             desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
 
             if not desc_f.empty:
-                # --- EXTRAÇÃO DINÂMICA DAS COLUNAS COM REMOÇÃO DE ESPAÇOS E QUEBRAS ---
                 desc_atv = limpar_quebras_linha(desc_f['Descrição da Atividade'].fillna('').values[0]) if 'Descrição da Atividade' in desc_f.columns else ''
                 riscos_agentes = limpar_quebras_linha(desc_f['Riscos e Agentes Existentes'].fillna('').values[0]) if 'Riscos e Agentes Existentes' in desc_f.columns else ''
                 medidas_protecao = limpar_quebras_linha(desc_f['Medidas de Proteção'].fillna('').values[0]) if 'Medidas de Proteção' in desc_f.columns else ''
                 
-                # Coleta o Setor de forma dinâmica diretamente da planilha geral
                 setor_original = limpar_valor(dados_colab.get('NomeLocal', dados_colab.get('Setor', '')))
                 setor_final = setor_original if setor_original != "" else unid_sel.title()
                 
-                # Busca por nome de cabeçalho inteligente para CPF
                 coluna_cpf = [col for col in df_colab.columns if 'CPF' in col.upper()]
                 if coluna_cpf:
                     cpf_bruto = dados_colab[coluna_cpf[0]]
@@ -369,7 +363,7 @@ if not df_colab.empty and not df_cargos.empty:
                         
                 cpf_final = formatar_cpf(cpf_bruto)
                 
-                # 1. Ordem de Serviço (DOCX -> PDF)
+                # 1. Ordem de Serviço
                 if g_os:
                     doc = Document(t_os)
                     substituir_docx(doc, {
@@ -392,10 +386,12 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # 2. Ficha de EPI (DOCX -> PDF)
+                # 2. Ficha de EPI (Busca robusta com e sem acentos)
                 if g_ficha:
                     df_e = carregar_aba(cargo)
-                    if df_e.empty: df_e = carregar_aba(remover_acentos(cargo))
+                    if df_e.empty: 
+                        df_e = carregar_aba(remover_acentos(cargo))
+                    
                     if not df_e.empty:
                         m_f = {"{{NOME}}": dados_colab['Nome Colaborador'], "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), "{{FUNCAO}}": cargo, "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"), "{{SETOR}}": setor_final, "{{CENTRO_CUSTO}}": ""}
                         conteudo_ficha_docx = preencher_ficha_docx(TEMPLATE_FICHA, m_f, df_e)
@@ -405,8 +401,11 @@ if not df_colab.empty and not df_cargos.empty:
                         if incluir_pdf:
                             pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_ficha_docx, nome_ficha_docx)
                             if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
+                    else:
+                        # Alerta visual caso o Pandas não ache a aba de EPIs correspondente
+                        st.warning(f"⚠️ Atenção: Não foi encontrada uma aba chamada '{cargo}' na planilha para gerar os itens da Ficha de EPI.")
 
-                # 3. Certificado NR06 (PPTX -> PDF)
+                # 3. Certificado NR06
                 if g_cert:
                     prs = Presentation(t_nr)
                     
