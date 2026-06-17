@@ -6,8 +6,8 @@ import io
 import os
 import zipfile
 import unicodedata
-import subprocess  # Adicionado para a conversão de PDF
-import copy        # Importado para clonar as propriedades da linha se necessário
+import subprocess  # Para a conversão de PDF
+import copy        # Para clonar as propriedades da linha se necessário
 from datetime import datetime
 from urllib.parse import quote
 import base64
@@ -18,7 +18,7 @@ st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 # Usar o diretório atual para facilitar o deploy no GitHub/Streamlit Cloud
 BASE_PATH = os.getcwd()
 
-# Mantendo seu padrão original de caminhos na raiz do repositório
+# Caminhos originais na raiz do repositório
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.docx")
@@ -138,7 +138,6 @@ def remover_acentos(texto):
     return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
 
 def limpar_valor(valor):
-    """Função auxiliar que limpa strings e remove marcações nulas (NaN) do DataFrame"""
     if pd.isna(valor): 
         return ""
     return str(valor).strip()
@@ -147,7 +146,6 @@ def limpar_valor(valor):
 def carregar_aba(aba_nome):
     try:
         url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={quote(aba_nome)}"
-        # Solução para as linhas de baixo: Força o Pandas a ler tudo como texto puro (str)
         df = pd.read_csv(url, dtype=str)
         return df
     except:
@@ -169,30 +167,24 @@ def formatar_cpf(cpf):
 
         cpf = str(cpf).strip()
 
-        # Remove o ".0" que o Pandas coloca automaticamente em números inteiros vindo do Excel/Sheets
         if cpf.endswith('.0'):
             cpf = cpf[:-2]
 
         if cpf.lower() in ["", "nan", "none", "0"]:
             return "Não informado"
 
-        # Mantém estritamente apenas números na string
         cpf = ''.join(filter(str.isdigit, cpf))
 
-        # Se o CPF veio sem o zero na esquerda (com 10 dígitos), corrige adicionando o zero
         if len(cpf) == 10:
             cpf = "0" + cpf
 
-        # Se tiver os 11 dígitos corretos, aplica a máscara visual bonita
         if len(cpf) == 11:
             return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
         
-        # Caso o número digitado na planilha esteja incompleto ou errado, exibe ele bruto em vez de sumir
         return cpf if cpf != "" else "Não informado"
     except:
         return "Não informado"
 
-# Função para converter arquivos do Office para PDF usando o LibreOffice do Servidor
 def converter_para_pdf_linux(conteudo_arquivo, nome_original):
     try:
         temp_input = os.path.join(BASE_PATH, nome_original)
@@ -215,7 +207,7 @@ def converter_para_pdf_linux(conteudo_arquivo, nome_original):
             os.remove(temp_pdf_path)
             return pdf_bytes, nome_pdf
     except Exception as e:
-        st.sidebar.warning(f"Aviso técnico: Falha ao converter {nome_original} para PDF (Verifique se o LibreOffice está instalado no ambiente). Detalhes: {e}")
+        st.sidebar.warning(f"Aviso técnico: Falha ao converter {nome_original} para PDF. Detalhes: {e}")
     return None, None
 
 # --- PROCESSAMENTO DE DOCUMENTOS ---
@@ -239,14 +231,10 @@ def substituir_pptx(prs, mapeamento):
                         for tag, valor in mapeamento.items():
                             if tag in run.text: run.text = run.text.replace(tag, str(valor))
 
-# Função para preencher a Ficha de EPI (DOCX) e limpar as linhas vazias que sobrarem
 def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
     doc = Document(caminho_template)
-    
-    # 1. Substitui os dados do cabeçalho
     substituir_docx(doc, mapeamento)
     
-    # 2. Localiza as linhas da tabela de Controle de EPI
     tabela_alvo = None
     linhas_tags = []
     
@@ -263,13 +251,12 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
     qtd_items = len(df_epis)
     linha_modelo = linhas_tags[0]
     
-    # Preenche sequencialmente de cima para baixo
-    for i, linha_row in enumerate(linhas_tags):
+    for i, row_item in enumerate(linhas_tags):
         if i < qtd_items:
             item = df_epis.iloc[i]
             num_seq = f"{i + 1:02d}"
             
-            for cell in linha_row.cells:
+            for cell in row_item.cells:
                 texto_celula = cell.text
                 if "ITEM" in texto_celula: cell.text = num_seq
                 elif "DESC" in texto_celula: cell.text = limpar_valor(item.get('Descrição', ''))
@@ -278,14 +265,12 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
                 elif "unid" in texto_celula: cell.text = limpar_valor(item.get('unid.', 'unid'))
                 elif "DATA" in texto_celula: cell.text = datetime.now().strftime("%d/%m/%Y")
         else:
-            # Limpa de forma absoluta todos os parágrafos das linhas vazias
-            for cell in linha_row.cells:
+            for cell in row_item.cells:
                 for paragraph in cell.paragraphs:
                     paragraph.text = ""
 
-    # Se houver mais EPIs do que linhas padrão, clona novas linhas
     if qtd_items > len(linhas_tags):
-        tr_modelo = linha_modelo._tr
+        tr_modelo = Applinha_modelo._tr
         for i in range(len(linhas_tags), qtd_items):
             item = df_epis.iloc[i]
             num_seq = f"{i + 1:02d}"
@@ -352,21 +337,21 @@ if not df_colab.empty and not df_cargos.empty:
             desc_f = df_cargos[df_cargos['f_l'] == remover_acentos(cargo)]
 
             if not desc_f.empty:
-                desc_atv = desc_f['Descrição da Atividade'].values[0]
+                # --- EXTRAÇÃO DINÂMICA DAS COLUNAS DA ABA CARGOS ---
+                desc_atv = str(desc_f['Descrição da Atividade'].fillna('').values[0]) if 'Descrição da Atividade' in desc_f.columns else ''
+                riscos_agentes = str(desc_f['Riscos e Agentes Existentes'].fillna('').values[0]) if 'Riscos e Agentes Existentes' in desc_f.columns else ''
+                medidas_protecao = str(desc_f['Medidas de Proteção'].fillna('').values[0]) if 'Medidas de Proteção' in desc_f.columns else ''
                 
                 # Coleta o Setor de forma dinâmica diretamente da planilha geral
                 setor_original = limpar_valor(dados_colab.get('NomeLocal', dados_colab.get('Setor', '')))
                 setor_final = setor_original if setor_original != "" else unid_sel.title()
                 
-                # --- BUSCA ULTRA AVANÇADA DA COLUNA S (CPF) ---
-                # Busca primeiro por nome de cabeçalho inteligente
+                # Busca por nome de cabeçalho inteligente para CPF
                 coluna_cpf = [col for col in df_colab.columns if 'CPF' in col.upper()]
                 if coluna_cpf:
                     cpf_bruto = dados_colab[coluna_cpf[0]]
                 else:
-                    # Fallback de segurança caso as colunas da esquerda vazias mascarem o nome do cabeçalho
                     try:
-                        # Posição absoluta da coluna S (19ª coluna da planilha, índice 18)
                         cpf_bruto = dados_colab.iloc[18]
                     except:
                         cpf_bruto = ""
@@ -382,9 +367,9 @@ if not df_colab.empty and not df_cargos.empty:
                         "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], 
                         "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], 
                         "{{SETOR}}": setor_final, 
-                        "{{DESCRICAO_ATIVIDADE}}": str(desc_atv), 
-                        "{{MEDIDAS_PROTECAO}}": str(desc_atv),    
-                        "{{RISCOS_AGENTES}}": "Riscos ergonômicos, físicos e de acidentes inerentes à função.",
+                        "{{DESCRICAO_ATIVIDADE}}": desc_atv, 
+                        "{{MEDIDAS_PROTECAO}}": medidas_protecao,    
+                        "{{RISCOS_AGENTES}}": riscos_agentes,
                         "{{DATA}}": datetime.now().strftime("%d/%m/%Y")
                     })
                     b = io.BytesIO(); doc.save(b)
@@ -414,7 +399,6 @@ if not df_colab.empty and not df_cargos.empty:
                 if g_cert:
                     prs = Presentation(t_nr)
                     
-                    # CORREÇÃO DA DUPLICAÇÃO DA CIDADE (Evita "São José, São José...")
                     if "SÃO JOSÉ" in unid_sel.upper():
                         local_data_string = f"{data_extenso_pt()}."
                     else:
@@ -444,5 +428,8 @@ if not df_colab.empty and not df_cargos.empty:
                     st.download_button("📦 BAIXAR KIT COMPLETO (ZIP)", z_b.getvalue(), f"Kit_{nome_sel}.zip", use_container_width=True)
             else:
                 st.error(f"Cargo '{cargo}' não encontrado na aba Cargos.")
+else:
+    st.error("Erro ao carregar dados da planilha Google. Verifique o acesso público ou as abas.")
 
+# --- FOOTER ---
 st.markdown("""<div class="footer">© 2026 Gestão Documentos | Desenvolvido por: Dilceu Junior</div>""", unsafe_allow_html=True)
