@@ -38,6 +38,11 @@ UNIDADES = {
     "CHAPECÓ": {
         "CNPJ": "83.675.413/0002-84",
         "ENDERECO": "Rua Xanxerê, 360E – Bairro Líder – Chapecó/SC"
+
+    "SÃO  LEOPOLDO": {
+        "CNPJ": "83.675.413/0016-80",
+        "ENDERECO": "Avenida Senador Salgado Filho, 1970 – São Leopoldo – RS"
+
     },
     "JOINVILLE": {
         "CNPJ": "83.675.413/0011-75",
