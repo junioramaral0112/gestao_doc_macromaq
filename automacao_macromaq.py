@@ -298,6 +298,11 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
             item = df_epis.iloc[i]
             num_seq = f"{i + 1:02d}"
             
+            # Trata o C.A.: se estiver vazio, nulo ou 0, coloca "N/A"
+            ca_valor = limpar_valor(item.get('C.A.', ''))
+            if ca_valor == "" or ca_valor.lower() in ["nan", "none", "0", "0.0"]:
+                ca_valor = "N/A"
+            
             for cell in row_item.cells:
                 texto_celula = cell.text
                 if "ITEM" in texto_celula: 
@@ -305,7 +310,7 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
                 elif "DESC" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('Descrição', '')), WD_ALIGN_PARAGRAPH.LEFT)
                 elif "CA" in texto_celula: 
-                    atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('C.A.', '')), WD_ALIGN_PARAGRAPH.CENTER)
+                    atualizar_celula_preservando_estilo(cell, ca_valor, WD_ALIGN_PARAGRAPH.CENTER)
                 elif "QT" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('qt.', '')), WD_ALIGN_PARAGRAPH.CENTER)
                 elif "unid" in texto_celula: 
@@ -323,6 +328,10 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
             item = df_epis.iloc[i]
             num_seq = f"{i + 1:02d}"
             
+            ca_valor = limpar_valor(item.get('C.A.', ''))
+            if ca_valor == "" or ca_valor.lower() in ["nan", "none", "0", "0.0"]:
+                ca_valor = "N/A"
+            
             nova_tr = copy.deepcopy(tr_modelo)
             nova_linha = tabela_alvo.add_row()
             nova_linha._tr.getparent().replace(nova_linha._tr, nova_tr)
@@ -335,7 +344,7 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
                 elif "DESC" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('Descrição', '')), WD_ALIGN_PARAGRAPH.LEFT)
                 elif "CA" in texto_celula: 
-                    atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('C.A.', '')), WD_ALIGN_PARAGRAPH.CENTER)
+                    atualizar_celula_preservando_estilo(cell, ca_valor, WD_ALIGN_PARAGRAPH.CENTER)
                 elif "QT" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('qt.', '')), WD_ALIGN_PARAGRAPH.CENTER)
                 elif "unid" in texto_celula: 
