@@ -38,12 +38,10 @@ UNIDADES = {
     "CHAPECÓ": {
         "CNPJ": "83.675.413/0002-84",
         "ENDERECO": "Rua Xanxerê, 360E – Bairro Líder – Chapecó/SC"
-
     },    
-    "SÃO  LEOPOLDO": {
+    "SÃO LEOPOLDO": {
         "CNPJ": "83.675.413/0016-80",
         "ENDERECO": "Avenida Senador Salgado Filho, 1970 – São Leopoldo – RS"
-
     },
     "JOINVILLE": {
         "CNPJ": "83.675.413/0011-75",
@@ -159,7 +157,6 @@ def limpar_quebras_linha(texto):
 @st.cache_data(ttl=300)
 def carregar_aba(aba_nome):
     try:
-        # Codifica o nome da aba removendo espaços desnecessários nas pontas
         url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={quote(aba_nome.strip())}"
         df = pd.read_csv(url, dtype=str)
         return df
@@ -179,23 +176,16 @@ def formatar_cpf(cpf):
     try:
         if pd.isna(cpf):
             return "Não informado"
-
         cpf = str(cpf).strip()
-
         if cpf.endswith('.0'):
             cpf = cpf[:-2]
-
         if cpf.lower() in ["", "nan", "none", "0"]:
             return "Não informado"
-
         cpf = ''.join(filter(str.isdigit, cpf))
-
         if len(cpf) == 10:
             cpf = "0" + cpf
-
         if len(cpf) == 11:
             return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
-        
         return cpf if cpf != "" else "Não informado"
     except:
         return "Não informado"
@@ -225,17 +215,40 @@ def converter_para_pdf_linux(conteudo_arquivo, nome_original):
         st.sidebar.warning(f"Aviso técnico: Falha ao converter {nome_original} para PDF. Detalhes: {e}")
     return None, None
 
-# --- PROCESSAMENTO DE DOCUMENTOS ---
+# --- PROCESSAMENTO DE DOCUMENTOS (COM PRESERVAÇÃO DE FONTE E FORMATAÇÃO) ---
 def substituir_docx(doc, mapeamento):
     for p in doc.paragraphs:
         for tag, valor in mapeamento.items():
-            if tag in p.text: p.text = p.text.replace(tag, str(valor))
+            if tag in p.text:
+                for run in p.runs:
+                    if tag in run.text:
+                        run.text = run.text.replace(tag, str(valor))
+                if tag in p.text:
+                    texto_inteiro = p.text
+                    for t, v in mapeamento.items():
+                        texto_inteiro = texto_inteiro.replace(t, str(v))
+                    if p.runs:
+                        p.runs[0].text = texto_inteiro
+                        for run in p.runs[1:]:
+                            run.text = ""
+
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for p in cell.paragraphs:
                     for tag, valor in mapeamento.items():
-                        if tag in p.text: p.text = p.text.replace(tag, str(valor))
+                        if tag in p.text:
+                            for run in p.runs:
+                                if tag in run.text:
+                                    run.text = run.text.replace(tag, str(valor))
+                            if tag in p.text:
+                                texto_inteiro = p.text
+                                for t, v in mapeamento.items():
+                                    texto_inteiro = texto_inteiro.replace(t, str(v))
+                                if p.runs:
+                                    p.runs[0].text = texto_inteiro
+                                    for run in p.runs[1:]:
+                                        run.text = ""
 
 def substituir_pptx(prs, mapeamento):
     for slide in prs.slides:
@@ -393,22 +406,17 @@ if not df_colab.empty and not df_cargos.empty:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                         if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                # 2. Ficha de EPI (Varredura de Fallbacks com limpeza de espaços ocultos)
+                # 2. Ficha de EPI
                 if g_ficha:
-                    # Limpa o nome do cargo removendo espaços fantasmas nas bordas
                     cargo_limpo = cargo.strip()
                     df_e = carregar_aba(cargo_limpo)
                     
-                    # Se falhar, testa variações adicionando ou removendo espaços forçados
                     if df_e.empty:
-                        df_e = carregar_aba(f"{cargo_limpo} ") # Espaço no final (Erro comum no Sheets)
-                    
+                        df_e = carregar_aba(f"{cargo_limpo} ")
                     if df_e.empty:
                         df_e = carregar_aba(cargo_limpo.title())
-                    
                     if df_e.empty: 
                         df_e = carregar_aba(remover_acentos(cargo_limpo))
-                    
                     if df_e.empty and "jr" in cargo_limpo.lower():
                         df_e = carregar_aba(cargo_limpo.lower().replace("jr", "Jr"))
 
@@ -422,7 +430,7 @@ if not df_colab.empty and not df_cargos.empty:
                             pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_ficha_docx, nome_ficha_docx)
                             if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
                     else:
-                        st.error(f"❌ Erro crítico: A aba de EPIs para o cargo '{cargo_limpo}' não pôde ser baixada. Verifique se o nome da aba lá embaixo na planilha tem espaços invisíveis no final.")
+                        st.error(f"❌ Erro crítico: A aba de EPIs para o cargo '{cargo_limpo}' não pôde ser baixada.")
 
                 # 3. Certificado NR06
                 if g_cert:
