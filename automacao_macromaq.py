@@ -281,6 +281,18 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
     qtd_items = len(df_epis)
     linha_modelo = linhas_tags[0]
     
+    def atualizar_celula_preservando_estilo(celula, novo_texto, alinhamento=WD_ALIGN_PARAGRAPH.CENTER):
+        if not celula.paragraphs:
+            celula.add_paragraph()
+        p = celula.paragraphs[0]
+        p.alignment = alinhamento
+        if p.runs:
+            p.runs[0].text = novo_texto
+            for r in p.runs[1:]:
+                r.text = ""
+        else:
+            p.add_run(novo_texto)
+
     for i, row_item in enumerate(linhas_tags):
         if i < qtd_items:
             item = df_epis.iloc[i]
@@ -288,17 +300,18 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
             
             for cell in row_item.cells:
                 texto_celula = cell.text
-                for p in cell.paragraphs:
-                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                
-                if "ITEM" in texto_celula: cell.text = num_seq
+                if "ITEM" in texto_celula: 
+                    atualizar_celula_preservando_estilo(cell, num_seq, WD_ALIGN_PARAGRAPH.CENTER)
                 elif "DESC" in texto_celula: 
-                    cell.text = limpar_valor(item.get('Descrição', ''))
-                    for p in cell.paragraphs: p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                elif "CA" in texto_celula: cell.text = limpar_valor(item.get('C.A.', ''))
-                elif "QT" in texto_celula: cell.text = limpar_valor(item.get('qt.', ''))
-                elif "unid" in texto_celula: cell.text = limpar_valor(item.get('unid.', 'unid'))
-                elif "DATA" in texto_celula: cell.text = datetime.now().strftime("%d/%m/%Y")
+                    atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('Descrição', '')), WD_ALIGN_PARAGRAPH.LEFT)
+                elif "CA" in texto_celula: 
+                    atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('C.A.', '')), WD_ALIGN_PARAGRAPH.CENTER)
+                elif "QT" in texto_celula: 
+                    atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('qt.', '')), WD_ALIGN_PARAGRAPH.CENTER)
+                elif "unid" in texto_celula: 
+                    atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('unid.', 'unid')), WD_ALIGN_PARAGRAPH.CENTER)
+                elif "DATA" in texto_celula: 
+                    atualizar_celula_preservando_estilo(cell, datetime.now().strftime("%d/%m/%Y"), WD_ALIGN_PARAGRAPH.CENTER)
         else:
             for cell in row_item.cells:
                 for paragraph in cell.paragraphs:
@@ -317,17 +330,18 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
             
             for cell in nova_linha.cells:
                 texto_celula = cell.text
-                for p in cell.paragraphs:
-                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                
-                if "ITEM" in texto_celula: cell.text = num_seq
+                if "ITEM" in texto_celula: 
+                    atualizar_celula_preservando_estilo(cell, num_seq, WD_ALIGN_PARAGRAPH.CENTER)
                 elif "DESC" in texto_celula: 
-                    cell.text = limpar_valor(item.get('Descrição', ''))
-                    for p in cell.paragraphs: p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                elif "CA" in texto_celula: cell.text = limpar_valor(item.get('C.A.', ''))
-                elif "QT" in texto_celula: cell.text = limpar_valor(item.get('qt.', ''))
-                elif "unid" in texto_celula: cell.text = limpar_valor(item.get('unid.', 'unid'))
-                elif "DATA" in texto_celula: cell.text = datetime.now().strftime("%d/%m/%Y")
+                    atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('Descrição', '')), WD_ALIGN_PARAGRAPH.LEFT)
+                elif "CA" in texto_celula: 
+                    atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('C.A.', '')), WD_ALIGN_PARAGRAPH.CENTER)
+                elif "QT" in texto_celula: 
+                    atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('qt.', '')), WD_ALIGN_PARAGRAPH.CENTER)
+                elif "unid" in texto_celula: 
+                    atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('unid.', 'unid')), WD_ALIGN_PARAGRAPH.CENTER)
+                elif "DATA" in texto_celula: 
+                    atualizar_celula_preservando_estilo(cell, datetime.now().strftime("%d/%m/%Y"), WD_ALIGN_PARAGRAPH.CENTER)
             
     output = io.BytesIO()
     doc.save(output)
