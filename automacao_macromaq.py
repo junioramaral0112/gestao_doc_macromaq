@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from pptx import Presentation
 import io
 import os
@@ -215,7 +217,7 @@ def converter_para_pdf_linux(conteudo_arquivo, nome_original):
         st.sidebar.warning(f"Aviso técnico: Falha ao converter {nome_original} para PDF. Detalhes: {e}")
     return None, None
 
-# --- PROCESSAMENTO DE DOCUMENTOS (COM PRESERVAÇÃO DE FONTE E FORMATAÇÃO) ---
+# --- PROCESSAMENTO DE DOCUMENTOS ---
 def substituir_docx(doc, mapeamento):
     for p in doc.paragraphs:
         for tag, valor in mapeamento.items():
@@ -286,8 +288,13 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
             
             for cell in row_item.cells:
                 texto_celula = cell.text
+                for p in cell.paragraphs:
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                
                 if "ITEM" in texto_celula: cell.text = num_seq
-                elif "DESC" in texto_celula: cell.text = limpar_valor(item.get('Descrição', ''))
+                elif "DESC" in texto_celula: 
+                    cell.text = limpar_valor(item.get('Descrição', ''))
+                    for p in cell.paragraphs: p.alignment = WD_ALIGN_PARAGRAPH.LEFT
                 elif "CA" in texto_celula: cell.text = limpar_valor(item.get('C.A.', ''))
                 elif "QT" in texto_celula: cell.text = limpar_valor(item.get('qt.', ''))
                 elif "unid" in texto_celula: cell.text = limpar_valor(item.get('unid.', 'unid'))
@@ -310,8 +317,13 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
             
             for cell in nova_linha.cells:
                 texto_celula = cell.text
+                for p in cell.paragraphs:
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                
                 if "ITEM" in texto_celula: cell.text = num_seq
-                elif "DESC" in texto_celula: cell.text = limpar_valor(item.get('Descrição', ''))
+                elif "DESC" in texto_celula: 
+                    cell.text = limpar_valor(item.get('Descrição', ''))
+                    for p in cell.paragraphs: p.alignment = WD_ALIGN_PARAGRAPH.LEFT
                 elif "CA" in texto_celula: cell.text = limpar_valor(item.get('C.A.', ''))
                 elif "QT" in texto_celula: cell.text = limpar_valor(item.get('qt.', ''))
                 elif "unid" in texto_celula: cell.text = limpar_valor(item.get('unid.', 'unid'))
