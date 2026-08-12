@@ -24,8 +24,8 @@ BASE_PATH = os.getcwd()
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.docx")
-TEMPLATE_OS_JUNIOR = os.path.join(BASE_PATH, "template_os_Junior.docx")
-TEMPLATE_NR06_JUNIOR = os.path.join(BASE_PATH, "template_nr06_Junior.pptx")
+TEMPLATE_OS_DAIANE = os.path.join(BASE_PATH, "template_os_Daiane.docx")
+TEMPLATE_NR06_DAIANE = os.path.join(BASE_PATH, "template_nr06_Daiane.pptx")
 TEMPLATE_OS_SIMONE = os.path.join(BASE_PATH, "template_os_simone.docx")
 TEMPLATE_NR06_SIMONE = os.path.join(BASE_PATH, "template_nr06_simone.pptx")
 
@@ -381,10 +381,10 @@ if not df_colab.empty and not df_cargos.empty:
         idx = lista_unid.index(unidade_plan) if unidade_plan in lista_unid else 0
         unid_sel = st.selectbox("2. Unidade para OS:", lista_unid, index=idx)
     with col3:
-        tecnico_sel = st.selectbox("3. Técnico Responsável:", ["Técnico Junior", "Técnica Simone"])
+        tecnico_sel = st.selectbox("3. Técnico Responsável:", ["Técnica Daiane Sales", "Técnica Simone"])
 
-    t_os = TEMPLATE_OS_JUNIOR if tecnico_sel == "Técnico Junior" else TEMPLATE_OS_SIMONE
-    t_nr = TEMPLATE_NR06_JUNIOR if tecnico_sel == "Técnico Junior" else TEMPLATE_NR06_SIMONE
+    t_os = TEMPLATE_OS_DAIANE if tecnico_sel == "Técnica Daiane Sales" else TEMPLATE_OS_SIMONE
+    t_nr = TEMPLATE_NR06_DAIANE if tecnico_sel == "Técnica Daiane Sales" else TEMPLATE_NR06_SIMONE
 
     st.markdown("<br>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
