@@ -11,7 +11,7 @@ import unicodedata
 import subprocess  # Para a conversão de PDF
 import copy        # Para clonar as propriedades da linha se necessário
 from datetime import datetime
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 import base64
 
 # --- CONFIGURAÇÕES ---
@@ -369,10 +369,24 @@ df_cargos = carregar_aba("Cargos")
 if not df_colab.empty and not df_cargos.empty:
     df_colab['Nome_Formatado'] = df_colab['Nome Colaborador'].astype(str).str.strip().str.title()
     
+    # -------------------------------------------------------------
+    # CAPTURA AUTOMÁTICA DE PARÂMETROS DA URL (?colaborador=...)
+    # -------------------------------------------------------------
+    colab_query = st.query_params.get("colaborador", None)
+    
+    lista_nomes = sorted(df_colab['Nome_Formatado'].dropna().unique())
+    idx_padrao = 0
+
+    if colab_query:
+        nome_query_limpo = remover_acentos(unquote(str(colab_query)))
+        for i, nome in enumerate(lista_nomes):
+            if remover_acentos(nome) == nome_query_limpo or nome_query_limpo in remover_acentos(nome):
+                idx_padrao = i
+                break
+
     col1, col2, col3 = st.columns(3)
     with col1:
-        lista_nomes = sorted(df_colab['Nome_Formatado'].dropna().unique())
-        nome_sel = st.selectbox("1. Selecione o Colaborador:", lista_nomes)
+        nome_sel = st.selectbox("1. Selecione o Colaborador:", lista_nomes, index=idx_padrao)
         dados_colab = df_colab[df_colab['Nome_Formatado'] == nome_sel].iloc[0]
         
     with col2:
