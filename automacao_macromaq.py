@@ -28,6 +28,9 @@ TEMPLATE_OS_DAIANE = os.path.join(BASE_PATH, "template_os_Daiane.docx")
 TEMPLATE_NR06_DAIANE = os.path.join(BASE_PATH, "template_nr06_Daiane.pptx")
 TEMPLATE_OS_SIMONE = os.path.join(BASE_PATH, "template_os_simone.docx")
 TEMPLATE_NR06_SIMONE = os.path.join(BASE_PATH, "template_nr06_simone.pptx")
+TEMPLATE_OS_JUNIOR = os.path.join(BASE_PATH, "template_os_Junior.docx")
+TEMPLATE_NR06_JUNIOR = os.path.join(BASE_PATH, "template_nr06_Junior.pptx")
+
 
 SHEET_ID = "1y98U3eK7JXJqQaMC0i7eFbwpvp97Nuyeml5Dis0UCUg"
 
