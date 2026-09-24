@@ -6,6 +6,17 @@ import os
 from datetime import datetime
 import requests
 import streamlit as st
+import pandas as pd
+from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from pptx import Presentation
+import io
+import zipfile
+import unicodedata
+import subprocess
+import copy
+from urllib.parse import quote, unquote
 
 # ==========================================================================
 # CONFIGURAÇÃO DA PÁGINA
@@ -18,7 +29,7 @@ st.set_page_config(
 )
 
 # ==========================================================================
-# CONSTANTES
+# CONSTANTES E CAMINHOS
 # ==========================================================================
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _DATA_DIR = os.path.join(_BASE_DIR, "data")
@@ -30,6 +41,9 @@ _LOGO_PNG = os.path.join(_IMAGES_DIR, "logo.png")
 DEFAULT_USER = "macrossma"
 DEFAULT_PASS = "macromaq2026"
 TRIAL_DIAS = 15
+
+# Definido antes do uso nos templates
+BASE_PATH = os.getcwd()
 
 # Templates por Técnico
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.docx")
@@ -487,7 +501,6 @@ def tela_portal():
         with col3:
             tecnico_sel = st.selectbox("3. Técnico Responsável:", ["Técnica Daiane Sales", "Técnica Simone", "Técnico Dilceu Junior"])
 
-        # Seleção dos templates com base no técnico escolhido
         if tecnico_sel == "Técnica Daiane Sales":
             t_os = TEMPLATE_OS_DAIANE
             t_nr = TEMPLATE_NR06_DAIANE
@@ -528,7 +541,6 @@ def tela_portal():
                             
                     cpf_final = formatar_cpf(cpf_bruto)
                     
-                    # 1. Ordem de Serviço
                     if g_os:
                         doc = Document(t_os)
                         substituir_docx(doc, {
@@ -551,7 +563,6 @@ def tela_portal():
                             pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                             if pdf_bytes: arquivos[nome_pdf] = pdf_bytes
 
-                    # 2. Ficha de EPI
                     if g_ficha:
                         cargo_limpo = cargo.strip()
                         df_e = carregar_aba(cargo_limpo)
@@ -574,7 +585,6 @@ def tela_portal():
                         else:
                             st.error(f"❌ Erro crítico: A aba de EPIs para o cargo '{cargo_limpo}' não pôde ser baixada.")
 
-                    # 3. Certificado NR06
                     if g_cert:
                         prs = Presentation(t_nr)
                         
