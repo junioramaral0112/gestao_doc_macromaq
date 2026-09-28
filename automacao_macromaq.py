@@ -17,8 +17,10 @@ import base64
 # --- CONFIGURAÇÕES ---
 st.set_page_config(page_title="Automação SSMA Macromaq", layout="wide")
 
+# Usar o diretório atual para facilitar o deploy no GitHub/Streamlit Cloud
 BASE_PATH = os.getcwd()
 
+# Caminhos originais na raiz do repositório
 FUNDO_PATH = os.path.join(BASE_PATH, "fundo.png")
 LOGO_PATH = os.path.join(BASE_PATH, "logo.png")
 TEMPLATE_FICHA = os.path.join(BASE_PATH, "template_ficha.docx")
@@ -40,7 +42,7 @@ UNIDADES = {
     "CHAPECÓ": {
         "CNPJ": "83.675.413/0002-84",
         "ENDERECO": "Rua Xanxerê, 360E – Bairro Líder – Chapecó/SC"
-    },
+    },    
     "SÃO LEOPOLDO": {
         "CNPJ": "83.675.413/0016-80",
         "ENDERECO": "Avenida Senador Salgado Filho, 1970 – São Leopoldo – RS"
@@ -81,6 +83,7 @@ def aplicar_layout():
         logo = get_base64(LOGO_PATH)
         st.markdown(f"""
         <style>
+        /* REMOVER BARRA LATERAL E NAVEGAÇÃO NATIVA */
         [data-testid="stSidebar"], [data-testid="stSidebarNav"] {{
             display: none;
         }}
@@ -144,12 +147,12 @@ def remover_acentos(texto):
     return "".join(c for c in unicodedata.normalize('NFD', texto.strip()) if unicodedata.category(c) != 'Mn').lower()
 
 def limpar_valor(valor):
-    if pd.isna(valor):
+    if pd.isna(valor): 
         return ""
     return str(valor).strip()
 
 def limpar_quebras_linha(texto):
-    if not isinstance(texto, str):
+    if not isinstance(texto, str): 
         texto = str(texto)
     texto = texto.replace('\r', ' ').replace('\n', ' ')
     while "  " in texto:
@@ -194,29 +197,47 @@ def formatar_cpf(cpf):
     except Exception:
         return "Não informado"
 
+def formatar_data(valor):
+    try:
+        if pd.isna(valor):
+            return ""
+        valor_str = str(valor).strip()
+        if valor_str.lower() in ["nan", "none", "0", "0.0"]:
+            return ""
+        # Remove horas se presentes (ex: 2017-08-07 00:00:00)
+        if " " in valor_str:
+            valor_str = valor_str.split(" ")[0]
+        # Converte formato YYYY-MM-DD para DD/MM/YYYY
+        if len(valor_str) == 10 and valor_str[4] == '-' and valor_str[7] == '-':
+            partes = valor_str.split('-')
+            return f"{partes[2]}/{partes[1]}/{partes[0]}"
+        return valor_str
+    except Exception:
+        return str(valor)
+
 def converter_para_pdf_linux(conteudo_arquivo, nome_original):
     try:
         temp_input = os.path.join(BASE_PATH, nome_original)
         with open(temp_input, "wb") as f:
             f.write(conteudo_arquivo)
-
+        
         subprocess.run([
             'libreoffice', '--headless', '--convert-to', 'pdf', temp_input,
             '--outdir', BASE_PATH
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-
+        
         nome_pdf = os.path.splitext(nome_original)[0] + ".pdf"
         temp_pdf_path = os.path.join(BASE_PATH, nome_pdf)
-
+        
         if os.path.exists(temp_pdf_path):
             with open(temp_pdf_path, "rb") as f:
                 pdf_bytes = f.read()
-
+            
             os.remove(temp_input)
             os.remove(temp_pdf_path)
             return pdf_bytes, nome_pdf
     except Exception as e:
-        st.warning(f"Falha na conversão para PDF de {nome_original}. O pacote LibreOffice pode não estar configurado no servidor. Detalhes: {e}")
+        st.warning(f"Falha ao converter {nome_original} para PDF. Verifique se o LibreOffice está instalado no servidor. Detalhes: {e}")
     return None, None
 
 # --- PROCESSAMENTO DE DOCUMENTOS ---
@@ -267,23 +288,23 @@ def substituir_pptx(prs, mapeamento):
 def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
     doc = Document(caminho_template)
     substituir_docx(doc, mapeamento)
-
+    
     tabela_alvo = None
     linhas_tags = []
-
+    
     for tabela in doc.tables:
         for row in tabela.rows:
             texto_linha = "".join(cell.text for cell in row.cells)
             if "ITEM" in texto_linha or "DESC" in texto_linha:
                 tabela_alvo = tabela
                 linhas_tags.append(row)
-
+                    
     if not tabela_alvo or len(linhas_tags) == 0:
         raise Exception("Nenhuma linha contendo a tag {{ITEM}} foi localizada no template do Word.")
-
+        
     qtd_items = len(df_epis)
     linha_modelo = linhas_tags[0]
-
+    
     def atualizar_celula_preservando_estilo(celula, novo_texto, alinhamento=WD_ALIGN_PARAGRAPH.CENTER):
         if not celula.paragraphs:
             celula.add_paragraph()
@@ -300,24 +321,24 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
         if i < qtd_items:
             item = df_epis.iloc[i]
             num_seq = f"{i + 1:02d}"
-
+            
             ca_valor = limpar_valor(item.get('C.A.', ''))
             if ca_valor == "" or ca_valor.lower() in ["nan", "none", "0", "0.0"]:
                 ca_valor = "N/A"
-
+            
             for cell in row_item.cells:
                 texto_celula = cell.text
-                if "ITEM" in texto_celula:
+                if "ITEM" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, num_seq, WD_ALIGN_PARAGRAPH.CENTER)
-                elif "DESC" in texto_celula:
+                elif "DESC" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('Descrição', '')), WD_ALIGN_PARAGRAPH.LEFT)
-                elif "CA" in texto_celula:
+                elif "CA" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, ca_valor, WD_ALIGN_PARAGRAPH.CENTER)
-                elif "QT" in texto_celula:
+                elif "QT" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('qt.', '')), WD_ALIGN_PARAGRAPH.CENTER)
-                elif "unid" in texto_celula:
+                elif "unid" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('unid.', 'unid')), WD_ALIGN_PARAGRAPH.CENTER)
-                elif "DATA" in texto_celula:
+                elif "DATA" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, datetime.now().strftime("%d/%m/%Y"), WD_ALIGN_PARAGRAPH.CENTER)
         else:
             for cell in row_item.cells:
@@ -329,31 +350,31 @@ def preencher_ficha_docx(caminho_template, mapeamento, df_epis):
         for i in range(len(linhas_tags), qtd_items):
             item = df_epis.iloc[i]
             num_seq = f"{i + 1:02d}"
-
+            
             ca_valor = limpar_valor(item.get('C.A.', ''))
             if ca_valor == "" or ca_valor.lower() in ["nan", "none", "0", "0.0"]:
                 ca_valor = "N/A"
-
+            
             nova_tr = copy.deepcopy(tr_modelo)
             nova_linha = tabela_alvo.add_row()
             nova_linha._tr.getparent().replace(nova_linha._tr, nova_tr)
             nova_linha._tr = nova_tr
-
+            
             for cell in nova_linha.cells:
                 texto_celula = cell.text
-                if "ITEM" in texto_celula:
+                if "ITEM" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, num_seq, WD_ALIGN_PARAGRAPH.CENTER)
-                elif "DESC" in texto_celula:
+                elif "DESC" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('Descrição', '')), WD_ALIGN_PARAGRAPH.LEFT)
-                elif "CA" in texto_celula:
+                elif "CA" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, ca_valor, WD_ALIGN_PARAGRAPH.CENTER)
-                elif "QT" in texto_celula:
+                elif "QT" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('qt.', '')), WD_ALIGN_PARAGRAPH.CENTER)
-                elif "unid" in texto_celula:
+                elif "unid" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, limpar_valor(item.get('unid.', 'unid')), WD_ALIGN_PARAGRAPH.CENTER)
-                elif "DATA" in texto_celula:
+                elif "DATA" in texto_celula: 
                     atualizar_celula_preservando_estilo(cell, datetime.now().strftime("%d/%m/%Y"), WD_ALIGN_PARAGRAPH.CENTER)
-
+            
     output = io.BytesIO()
     doc.save(output)
     return output.getvalue()
@@ -370,10 +391,12 @@ df_cargos = carregar_aba("Cargos")
 
 if not df_colab.empty and not df_cargos.empty:
     df_colab['Nome_Formatado'] = df_colab['Nome Colaborador'].astype(str).str.strip().str.title()
-
-    # Captura automática de parâmetros da URL (?colaborador=...)
+    
+    # -------------------------------------------------------------
+    # CAPTURA AUTOMÁTICA DE PARÂMETROS DA URL (?colaborador=...)
+    # -------------------------------------------------------------
     colab_query = st.query_params.get("colaborador", None)
-
+    
     lista_nomes = sorted(df_colab['Nome_Formatado'].dropna().unique())
     idx_padrao = 0
 
@@ -388,16 +411,17 @@ if not df_colab.empty and not df_cargos.empty:
     with col1:
         nome_sel = st.selectbox("1. Selecione o Colaborador:", lista_nomes, index=idx_padrao)
         dados_colab = df_colab[df_colab['Nome_Formatado'] == nome_sel].iloc[0]
-
+        
     with col2:
         unidade_plan = str(dados_colab.get('Filial', dados_colab.get('Unidade', ''))).upper().strip()
         lista_unid = list(UNIDADES.keys())
         idx = lista_unid.index(unidade_plan) if unidade_plan in lista_unid else 0
         unid_sel = st.selectbox("2. Unidade para OS:", lista_unid, index=idx)
-
     with col3:
+        # Inclusão do Técnico Dilceu Junior na lista de opções
         tecnico_sel = st.selectbox("3. Técnico Responsável:", ["Técnica Daiane Sales", "Técnica Simone", "Técnico Dilceu Junior"])
 
+    # Atribuição dos templates com base no técnico selecionado
     if tecnico_sel == "Técnica Daiane Sales":
         t_os = TEMPLATE_OS_DAIANE
         t_nr = TEMPLATE_NR06_DAIANE
@@ -425,10 +449,11 @@ if not df_colab.empty and not df_cargos.empty:
                 desc_atv = limpar_quebras_linha(desc_f['Descrição da Atividade'].fillna('').values[0]) if 'Descrição da Atividade' in desc_f.columns else ''
                 riscos_agentes = limpar_quebras_linha(desc_f['Riscos e Agentes Existentes'].fillna('').values[0]) if 'Riscos e Agentes Existentes' in desc_f.columns else ''
                 medidas_protecao = limpar_quebras_linha(desc_f['Medidas de Proteção'].fillna('').values[0]) if 'Medidas de Proteção' in desc_f.columns else ''
-
+                
                 setor_original = limpar_valor(dados_colab.get('NomeLocal', dados_colab.get('Setor', '')))
                 setor_final = setor_original if setor_original != "" else unid_sel.title()
-
+                
+                # Busca CPF
                 coluna_cpf = [col for col in df_colab.columns if 'CPF' in col.upper()]
                 if coluna_cpf:
                     cpf_bruto = dados_colab[coluna_cpf[0]]
@@ -437,21 +462,21 @@ if not df_colab.empty and not df_cargos.empty:
                         cpf_bruto = dados_colab.iloc[18]
                     except Exception:
                         cpf_bruto = ""
-
+                        
                 cpf_final = formatar_cpf(cpf_bruto)
-
+                
                 # 1. Ordem de Serviço
                 if g_os:
                     doc = Document(t_os)
                     substituir_docx(doc, {
-                        "{{NOME}}": dados_colab['Nome Colaborador'],
-                        "{{FUNCAO}}": cargo.upper(),
-                        "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"],
-                        "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"],
-                        "{{SETOR}}": setor_final,
-                        "{{DESCRICAO_ATIVIDADE}}": desc_atv,
-                        "{{MEDIDAS_PROTECAO}}": medidas_protecao,
-                        "{{RISCOS_AGENTES}}": riscos_agentes,
+                        "{{NOME}}": dados_colab['Nome Colaborador'], 
+                        "{{FUNCAO}}": cargo.upper(), 
+                        "{{CNPJ}}": UNIDADES[unid_sel]["CNPJ"], 
+                        "{{ENDERECO}}": UNIDADES[unid_sel]["ENDERECO"], 
+                        "{{SETOR}}": setor_final, 
+                        "{{DESCRICAO_ATIVIDADE}}": desc_atv, 
+                        "{{MEDIDAS_PROTECAO}}": medidas_protecao,    
+                        "{{RISCOS_AGENTES}}": riscos_agentes, 
                         "{{DATA}}": datetime.now().strftime("%d/%m/%Y")
                     })
                     b = io.BytesIO()
@@ -459,7 +484,7 @@ if not df_colab.empty and not df_cargos.empty:
                     conteudo_docx = b.getvalue()
                     nome_docx = f"OS {nome_sel}.docx"
                     arquivos[nome_docx] = conteudo_docx
-
+                    
                     if incluir_pdf:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_docx, nome_docx)
                         if pdf_bytes:
@@ -469,29 +494,41 @@ if not df_colab.empty and not df_cargos.empty:
                 if g_ficha:
                     cargo_limpo = cargo.strip()
                     df_e = carregar_aba(cargo_limpo)
-
+                    
                     if df_e.empty:
                         df_e = carregar_aba(f"{cargo_limpo} ")
                     if df_e.empty:
                         df_e = carregar_aba(cargo_limpo.title())
-                    if df_e.empty:
+                    if df_e.empty: 
                         df_e = carregar_aba(remover_acentos(cargo_limpo))
                     if df_e.empty and "jr" in cargo_limpo.lower():
                         df_e = carregar_aba(cargo_limpo.lower().replace("jr", "Jr"))
 
                     if not df_e.empty:
+                        # Busca Data de Admissão: Coluna M (índice 12) ou nome que contenha "ADMISS"
+                        coluna_admissao = [c for c in df_colab.columns if 'ADMISS' in str(c).upper()]
+                        if coluna_admissao:
+                            data_adm_bruta = dados_colab[coluna_admissao[0]]
+                        else:
+                            try:
+                                data_adm_bruta = dados_colab.iloc[12]  # Coluna M (A=0, B=1, ... M=12)
+                            except Exception:
+                                data_adm_bruta = ""
+                        
+                        data_admissao_final = formatar_data(data_adm_bruta)
+
                         m_f = {
-                            "{{NOME}}": dados_colab['Nome Colaborador'],
-                            "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')),
-                            "{{FUNCAO}}": cargo,
-                            "{{DATA_ADMISSAO}}": datetime.now().strftime("%d/%m/%Y"),
-                            "{{SETOR}}": setor_final,
+                            "{{NOME}}": dados_colab['Nome Colaborador'], 
+                            "{{MATRICULA}}": formatar_matricula(dados_colab.get('Matrícula', '')), 
+                            "{{FUNCAO}}": cargo, 
+                            "{{DATA_ADMISSAO}}": data_admissao_final, 
+                            "{{SETOR}}": setor_final, 
                             "{{CENTRO_CUSTO}}": ""
                         }
                         conteudo_ficha_docx = preencher_ficha_docx(TEMPLATE_FICHA, m_f, df_e)
                         nome_ficha_docx = f"Ficha EPI {nome_sel}.docx"
                         arquivos[nome_ficha_docx] = conteudo_ficha_docx
-
+                        
                         if incluir_pdf:
                             pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_ficha_docx, nome_ficha_docx)
                             if pdf_bytes:
@@ -502,17 +539,17 @@ if not df_colab.empty and not df_cargos.empty:
                 # 3. Certificado NR06
                 if g_cert:
                     prs = Presentation(t_nr)
-
+                    
                     if "SÃO JOSÉ" in unid_sel.upper():
                         local_data_string = f"{data_extenso_pt()}."
                     else:
                         local_data_string = f"{unid_sel.title()}, {data_extenso_pt()}."
 
                     substituir_pptx(prs, {
-                        "{{NOME}}": dados_colab['Nome Colaborador'],
-                        "{{CPF}}": cpf_final,
-                        "{{FUNCAO}}": cargo,
-                        "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"),
+                        "{{NOME}}": dados_colab['Nome Colaborador'], 
+                        "{{CPF}}": cpf_final, 
+                        "{{FUNCAO}}": cargo, 
+                        "{{DATA_TREINAMENTO}}": datetime.now().strftime("%d/%m/%Y"), 
                         "{{LOCAL_DATA}}": local_data_string
                     })
                     b = io.BytesIO()
@@ -520,7 +557,7 @@ if not df_colab.empty and not df_cargos.empty:
                     conteudo_pptx = b.getvalue()
                     nome_pptx = f"NR06 {nome_sel}.pptx"
                     arquivos[nome_pptx] = conteudo_pptx
-
+                    
                     if incluir_pdf:
                         pdf_bytes, nome_pdf = converter_para_pdf_linux(conteudo_pptx, nome_pptx)
                         if pdf_bytes:
